@@ -51,6 +51,10 @@ properties:
           - enum:
               - qcom,maili-rpmh-clk
           - const: qcom,hawi-rpmh-clk
+      - items:
+          - enum:
+              - qcom,sm7150-rpmh-clk
+          - const: qcom,sc7180-rpmh-clk
 
   clocks:
     maxItems: 1
