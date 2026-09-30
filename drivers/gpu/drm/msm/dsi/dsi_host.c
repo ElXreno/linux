@@ -1920,6 +1920,9 @@ static int dsi_populate_dsc_params(struct msm_dsi_host *msm_host, struct drm_dsc
 		return ret;
 	}
 
+	if (dsc->bits_per_component == 10 && dsc->bits_per_pixel == 8 << 4)
+		dsc->rc_range_params[0].range_max_qp = 8;
+
 	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
 	dsc->line_buf_depth = dsc->bits_per_component + 1;
 
