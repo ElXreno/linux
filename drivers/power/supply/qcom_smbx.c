@@ -1116,7 +1116,10 @@ static int smb_probe(struct platform_device *pdev)
 		return dev_err_probe(chip->dev, rc,
 				     "Failed to init status change work\n");
 
-	rc = (chip->batt_info->voltage_max_design_uv - 3487500) / 7500 + 1;
+	if (chip->gen == SMB5)
+		rc = (chip->batt_info->voltage_max_design_uv - 3600000) / 10000;
+	else
+		rc = (chip->batt_info->voltage_max_design_uv - 3487500) / 7500 + 1;
 	rc = regmap_update_bits(chip->regmap, chip->base + FLOAT_VOLTAGE_CFG,
 				FLOAT_VOLTAGE_SETTING_MASK, rc);
 	if (rc < 0)
