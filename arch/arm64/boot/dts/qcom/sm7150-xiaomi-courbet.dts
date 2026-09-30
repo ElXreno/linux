@@ -118,6 +118,10 @@
 	/* ti,bq25968 (charger) @ 66 */
 };
 
+&mdss {
+	/delete-property/ resets;
+};
+
 &panel {
 	compatible = "mdss,k9a-36-02-0a-mp-dsc";
 };
