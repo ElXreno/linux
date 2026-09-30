@@ -138,6 +138,17 @@
 	enable-gpios = <&tlmm 100 GPIO_ACTIVE_HIGH>;
 };
 
+&pm6150_typec {
+	connector {
+		power-role = "dual";
+		try-power-role = "sink";
+
+		sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_DUAL_ROLE |
+			     PDO_FIXED_USB_COMM | PDO_FIXED_DATA_SWAP)>;
+		op-sink-microwatt = <10000000>;
+	};
+};
+
 &remoteproc_adsp {
 	firmware-name = "qcom/sm7150/xiaomi/courbet/adsp.mbn";
 };
