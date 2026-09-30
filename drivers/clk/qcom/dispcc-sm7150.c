@@ -343,7 +343,7 @@ static struct clk_rcg2 dispcc_mdss_mdp_clk_src = {
 		.parent_data = dispcc_parent_data_3,
 		.num_parents = ARRAY_SIZE(dispcc_parent_data_3),
 		.flags = CLK_SET_RATE_PARENT,
-		.ops = &clk_rcg2_shared_ops,
+		.ops = &clk_rcg2_shared_no_init_park_ops,
 	},
 };
 
