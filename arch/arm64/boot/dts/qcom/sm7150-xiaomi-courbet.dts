@@ -21,6 +21,25 @@
 
 	qcom,board-id = <45 0>;
 
+	vreg_ts_avdd: regulator-ts-avdd {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_ts_avdd";
+		gpio = <&tlmm 21 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <4000>;
+		vin-supply = <&vreg_l11c_3p3>;
+	};
+
+	vreg_ts_vddio: regulator-ts-vddio {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_ts_vddio";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&tlmm 72 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <4000>;
+	};
+
 	reserved-memory {
 		tz_mem: trust-zone@86200000 {
 			reg = <0x0 0x86200000 0x0 0x4900000>;
@@ -132,10 +151,25 @@
 };
 
 &spi4 {
-	clock-frequency = <8000000>;
 	status = "okay";
 
-	/* xiaomi,spits (spi ts) @ 0 */
+	touchscreen@0 {
+		compatible = "goodix,gt9897";
+		reg = <0>;
+		spi-max-frequency = <8000000>;
+
+		interrupts-extended = <&tlmm 9 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&tlmm 8 GPIO_ACTIVE_LOW>;
+
+		avdd-supply = <&vreg_ts_avdd>;
+		vddio-supply = <&vreg_ts_vddio>;
+
+		pinctrl-0 = <&ts_int_active &ts_reset_active>;
+		pinctrl-names = "default";
+
+		touchscreen-size-x = <1080>;
+		touchscreen-size-y = <2400>;
+	};
 };
 
 &spi8 {
