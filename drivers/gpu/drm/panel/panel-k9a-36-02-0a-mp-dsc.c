@@ -22,6 +22,7 @@ struct k9a_36_02_0a_mp_dsc {
 	struct mipi_dsi_device *dsi;
 	struct drm_dsc_config dsc;
 	struct gpio_desc *reset_gpio;
+	bool sleep_out;
 };
 
 static inline
@@ -125,9 +126,14 @@ static int k9a_36_02_0a_mp_dsc_prepare(struct drm_panel *panel)
 	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
 	struct drm_dsc_picture_parameter_set pps;
 
+	if (ctx->sleep_out) {
+		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
+		msleep(120);
+	}
 	k9a_36_02_0a_mp_dsc_reset(ctx);
 
 	k9a_36_02_0a_mp_dsc_on(&dsi_ctx);
+	ctx->sleep_out = true;
 
 	drm_dsc_pps_payload_pack(&pps, &ctx->dsc);
 
@@ -147,6 +153,8 @@ static int k9a_36_02_0a_mp_dsc_unprepare(struct drm_panel *panel)
 	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
 
 	k9a_36_02_0a_mp_dsc_off(&dsi_ctx);
+	if (!dsi_ctx.accum_err)
+		ctx->sleep_out = false;
 
 	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 
@@ -154,11 +162,11 @@ static int k9a_36_02_0a_mp_dsc_unprepare(struct drm_panel *panel)
 }
 
 static const struct drm_display_mode k9a_36_02_0a_mp_dsc_mode = {
-	.clock = (1080 + 16 + 8 + 8) * (2400 + 1212 + 4 + 8) * 60 / 1000,
+	.clock = (1080 + 124 + 8 + 8) * (2400 + 1212 + 4 + 8) * 60 / 1000,
 	.hdisplay = 1080,
-	.hsync_start = 1080 + 16,
-	.hsync_end = 1080 + 16 + 8,
-	.htotal = 1080 + 16 + 8 + 8,
+	.hsync_start = 1080 + 124,
+	.hsync_end = 1080 + 124 + 8,
+	.htotal = 1080 + 124 + 8 + 8,
 	.vdisplay = 2400,
 	.vsync_start = 2400 + 1212,
 	.vsync_end = 2400 + 1212 + 4,
@@ -245,10 +253,11 @@ static int k9a_36_02_0a_mp_dsc_probe(struct mipi_dsi_device *dsi)
 				     "Failed to get reset-gpios\n");
 
 	ctx->dsi = dsi;
+	ctx->sleep_out = true;
 	mipi_dsi_set_drvdata(dsi, ctx);
 
 	dsi->lanes = 4;
-	dsi->format = MIPI_DSI_FMT_RGB101010;
+	dsi->format = MIPI_DSI_FMT_RGB888;
 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO_BURST |
 			  MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_LPM;
 
@@ -277,7 +286,7 @@ static int k9a_36_02_0a_mp_dsc_probe(struct mipi_dsi_device *dsi)
 	WARN_ON(1080 % ctx->dsc.slice_width);
 	ctx->dsc.slice_count = 1080 / ctx->dsc.slice_width;
 	ctx->dsc.bits_per_component = 10;
-	ctx->dsc.bits_per_pixel = 10 << 4; /* 4 fractional bits */
+	ctx->dsc.bits_per_pixel = 8 << 4; /* 4 fractional bits */
 	ctx->dsc.block_pred_enable = true;
 
 	ret = mipi_dsi_attach(dsi);
