@@ -715,7 +715,8 @@ raced_with_open:
 	/* wait for circular write buffer to drain, disconnect, or at
 	 * most GS_CLOSE_TIMEOUT seconds; then discard the rest
 	 */
-	if (kfifo_len(&port->port_write_buf) > 0 && gser) {
+	if (kfifo_len(&port->port_write_buf) > 0 && gser &&
+	    (!gser->host_open || gser->host_open(gser))) {
 		spin_unlock_irq(&port->port_lock);
 		wait_event_interruptible_timeout(port->drain_wait,
 					gs_close_flush_done(port),

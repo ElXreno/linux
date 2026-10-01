@@ -384,7 +384,7 @@ static int acm_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 		 * host sets the USB_CDC_CTRL_DTR bit; and when it clears
 		 * that bit, we should return to that no-flow state.
 		 */
-		acm->port_handshake_bits = w_value;
+		WRITE_ONCE(acm->port_handshake_bits, w_value);
 		break;
 
 	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
@@ -591,6 +591,13 @@ static void acm_disconnect(struct gserial *port)
 	acm_notify_serial_state(acm);
 }
 
+static bool acm_host_open(struct gserial *port)
+{
+	struct f_acm		*acm = port_to_acm(port);
+
+	return READ_ONCE(acm->port_handshake_bits) & USB_CDC_CTRL_DTR;
+}
+
 static int acm_send_break(struct gserial *port, int duration)
 {
 	struct f_acm		*acm = port_to_acm(port);
@@ -757,6 +764,7 @@ static struct usb_function *acm_alloc_func(struct usb_function_instance *fi)
 	acm->port.connect = acm_connect;
 	acm->port.disconnect = acm_disconnect;
 	acm->port.send_break = acm_send_break;
+	acm->port.host_open = acm_host_open;
 
 	acm->port.func.name = "acm";
 	acm->port.func.strings = acm_strings;
