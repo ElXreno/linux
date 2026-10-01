@@ -197,3 +197,7 @@
 &venus {
 	firmware-name = "qcom/sm7150/xiaomi/courbet/venus.mbn";
 };
+
+&wifi {
+	firmware-name = "sm7150";
+};
