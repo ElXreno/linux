@@ -51,6 +51,7 @@ struct gserial {
 	void (*connect)(struct gserial *p);
 	void (*disconnect)(struct gserial *p);
 	int (*send_break)(struct gserial *p, int duration);
+	bool (*host_open)(struct gserial *p);
 };
 
 /* utilities to allocate/free request and buffer */
