@@ -1550,6 +1550,9 @@ static int ath10k_snoc_modem_notify(struct notifier_block *nb, unsigned long act
 			spin_lock_bh(&ce->ce_lock);
 			spin_unlock_bh(&ce->ce_lock);
 			timer_delete_sync(&ar_snoc->rx_post_retry);
+
+			if (!notify_data->crashed && ath10k_qmi_modem_shutdown(ar))
+				ath10k_warn(ar, "failed to send modem shutdown to firmware\n");
 		}
 		break;
 
