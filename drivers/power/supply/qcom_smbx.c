@@ -277,6 +277,7 @@ static enum power_supply_property smb_properties[] = {
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_USB_TYPE,
+	POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR,
 };
 
 static bool smb_is_charging(struct smb_chip *chip)
@@ -656,6 +657,62 @@ static int smb_get_prop_health(struct smb_chip *chip, int *val)
 	return -EINVAL;
 }
 
+static int smb_get_charge_behaviour(struct smb_chip *chip, int *val)
+{
+	unsigned int usbin_cmd, chg_cmd;
+	int rc;
+
+	rc = regmap_read(chip->regmap, chip->base + USBIN_CMD_IL, &usbin_cmd);
+	if (rc < 0)
+		return rc;
+
+	rc = regmap_read(chip->regmap, chip->base + CHARGING_ENABLE_CMD, &chg_cmd);
+	if (rc < 0)
+		return rc;
+
+	if (usbin_cmd & USBIN_SUSPEND_BIT)
+		*val = POWER_SUPPLY_CHARGE_BEHAVIOUR_FORCE_DISCHARGE;
+	else if (!(chg_cmd & CHARGING_ENABLE_CMD_BIT))
+		*val = POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE;
+	else
+		*val = POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO;
+
+	return 0;
+}
+
+static int smb_set_charge_behaviour(struct smb_chip *chip, int val)
+{
+	bool usbin_suspend, chg_enable;
+	int rc;
+
+	switch (val) {
+	case POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO:
+		usbin_suspend = false;
+		chg_enable = true;
+		break;
+	case POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE:
+		usbin_suspend = false;
+		chg_enable = false;
+		break;
+	case POWER_SUPPLY_CHARGE_BEHAVIOUR_FORCE_DISCHARGE:
+		usbin_suspend = true;
+		chg_enable = true;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	rc = regmap_update_bits(chip->regmap, chip->base + CHARGING_ENABLE_CMD,
+				CHARGING_ENABLE_CMD_BIT,
+				chg_enable ? CHARGING_ENABLE_CMD_BIT : 0);
+	if (rc < 0)
+		return rc;
+
+	return regmap_update_bits(chip->regmap, chip->base + USBIN_CMD_IL,
+				  USBIN_SUSPEND_BIT,
+				  usbin_suspend ? USBIN_SUSPEND_BIT : 0);
+}
+
 static int smb_get_property(struct power_supply *psy,
 			     enum power_supply_property psp,
 			     union power_supply_propval *val)
@@ -684,6 +741,8 @@ static int smb_get_property(struct power_supply *psy,
 		return smb_get_prop_health(chip, &val->intval);
 	case POWER_SUPPLY_PROP_USB_TYPE:
 		return smb_apsd_get_charger_type(chip, &val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
+		return smb_get_charge_behaviour(chip, &val->intval);
 	default:
 		dev_err(chip->dev, "invalid property: %d\n", psp);
 		return -EINVAL;
@@ -702,6 +761,8 @@ static int smb_set_property(struct power_supply *psy,
 					  USBIN_SUSPEND_BIT, !val->intval);
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		return smb_set_current_limit(chip, val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
+		return smb_set_charge_behaviour(chip, val->intval);
 	default:
 		dev_err(chip->dev, "No setter for property: %d\n", psp);
 		return -EINVAL;
@@ -714,6 +775,7 @@ static int smb_property_is_writable(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
+	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
 		return 1;
 	default:
 		return 0;
@@ -776,6 +838,9 @@ static const struct power_supply_desc smb_psy_desc = {
 		     BIT(POWER_SUPPLY_USB_TYPE_CDP) |
 		     BIT(POWER_SUPPLY_USB_TYPE_DCP) |
 		     BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN),
+	.charge_behaviours = BIT(POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO) |
+			     BIT(POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE) |
+			     BIT(POWER_SUPPLY_CHARGE_BEHAVIOUR_FORCE_DISCHARGE),
 	.properties = smb_properties,
 	.num_properties = ARRAY_SIZE(smb_properties),
 	.get_property = smb_get_property,
