@@ -4635,8 +4635,37 @@
 			clock-names = "xo",
 				      "alternate";
 
+			interrupts-extended = <&lmh_cluster0 0>,
+					      <&lmh_cluster1 0>;
+			interrupt-names = "dcvsh-irq-0",
+					  "dcvsh-irq-1";
+
 			#freq-domain-cells = <1>;
 			#clock-cells = <1>;
+		};
+
+		lmh_cluster1: lmh@18350800 {
+			compatible = "qcom,sm7150-lmh";
+			reg = <0x0 0x18350800 0x0 0x400>;
+			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
+			cpus = <&cpu6>;
+			qcom,lmh-temp-arm-millicelsius = <65000>;
+			qcom,lmh-temp-low-millicelsius = <94500>;
+			qcom,lmh-temp-high-millicelsius = <95000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
+		};
+
+		lmh_cluster0: lmh@18358800 {
+			compatible = "qcom,sm7150-lmh";
+			reg = <0x0 0x18358800 0x0 0x400>;
+			interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>;
+			cpus = <&cpu0>;
+			qcom,lmh-temp-arm-millicelsius = <65000>;
+			qcom,lmh-temp-low-millicelsius = <94500>;
+			qcom,lmh-temp-high-millicelsius = <95000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
 		};
 
 		wifi: wifi@18800000 {
