@@ -198,6 +198,10 @@
 	/* ir-spi @ 0 */
 };
 
+&uart8 {
+	status = "disabled";
+};
+
 &venus {
 	firmware-name = "qcom/sm7150/xiaomi/courbet/venus.mbn";
 };
