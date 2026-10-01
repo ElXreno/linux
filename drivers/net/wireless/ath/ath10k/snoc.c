@@ -544,6 +544,9 @@ static void ath10k_snoc_rx_post_pipe(struct ath10k_snoc_pipe *pipe)
 	if (!ce_pipe->dest_ring)
 		return;
 
+	if (test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags))
+		return;
+
 	spin_lock_bh(&ce->ce_lock);
 	num = __ath10k_ce_rx_num_free_bufs(ce_pipe);
 	spin_unlock_bh(&ce->ce_lock);
@@ -1517,6 +1520,7 @@ static int ath10k_snoc_modem_notify(struct notifier_block *nb, unsigned long act
 {
 	struct ath10k_snoc *ar_snoc = container_of(nb, struct ath10k_snoc, nb);
 	struct ath10k *ar = ar_snoc->ar;
+	struct ath10k_ce *ce = ath10k_ce_priv(ar);
 	struct qcom_ssr_notify_data *notify_data = data;
 
 	switch (action) {
@@ -1536,6 +1540,14 @@ static int ath10k_snoc_modem_notify(struct notifier_block *nb, unsigned long act
 			set_bit(ATH10K_SNOC_FLAG_MODEM_STOPPED, &ar_snoc->flags);
 		else
 			clear_bit(ATH10K_SNOC_FLAG_MODEM_STOPPED, &ar_snoc->flags);
+
+		if (test_bit(ATH10K_SNOC_FLAG_REGISTERED, &ar_snoc->flags)) {
+			set_bit(ATH10K_SNOC_FLAG_RECOVERY, &ar_snoc->flags);
+			set_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags);
+			spin_lock_bh(&ce->ce_lock);
+			spin_unlock_bh(&ce->ce_lock);
+			timer_delete_sync(&ar_snoc->rx_post_retry);
+		}
 		break;
 
 	case QCOM_SSR_AFTER_SHUTDOWN:
