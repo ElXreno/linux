@@ -87,6 +87,10 @@
 	};
 };
 
+&bluetooth {
+	firmware-name = "crnv21.bin", "crbtfw21.tlv";
+};
+
 &gpu {
 	zap-shader {
 		firmware-name = "qcom/sm7150/xiaomi/courbet/a615_zap.mbn";
