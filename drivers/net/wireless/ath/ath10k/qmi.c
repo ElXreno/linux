@@ -90,7 +90,7 @@ static int ath10k_qmi_setup_msa_permissions(struct ath10k_qmi *qmi)
 	int ret;
 	int i;
 
-	if (qmi->msa_fixed_perm)
+	if (qmi->msa_fixed_perm || qmi->msa_assigned)
 		return 0;
 
 	for (i = 0; i < qmi->nr_mem_region; i++) {
@@ -98,6 +98,8 @@ static int ath10k_qmi_setup_msa_permissions(struct ath10k_qmi *qmi)
 		if (ret)
 			goto err_unmap;
 	}
+
+	qmi->msa_assigned = true;
 
 	return 0;
 
@@ -111,11 +113,13 @@ static void ath10k_qmi_remove_msa_permission(struct ath10k_qmi *qmi)
 {
 	int i;
 
-	if (qmi->msa_fixed_perm)
+	if (qmi->msa_fixed_perm || !qmi->msa_assigned)
 		return;
 
 	for (i = 0; i < qmi->nr_mem_region; i++)
 		ath10k_qmi_unmap_msa_permission(qmi, &qmi->mem_region[i]);
+
+	qmi->msa_assigned = false;
 }
 
 static int ath10k_qmi_msa_mem_info_send_sync_msg(struct ath10k_qmi *qmi)
@@ -942,7 +946,9 @@ static void ath10k_qmi_event_server_exit(struct ath10k_qmi *qmi)
 	struct ath10k *ar = qmi->ar;
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
 
-	ath10k_qmi_remove_msa_permission(qmi);
+	if (test_bit(ATH10K_SNOC_FLAG_UNREGISTERING, &ar_snoc->flags) ||
+	    !test_bit(ATH10K_SNOC_FLAG_MODEM_STOPPED, &ar_snoc->flags))
+		ath10k_qmi_remove_msa_permission(qmi);
 	ath10k_core_free_board_files(ar);
 	if (!test_bit(ATH10K_SNOC_FLAG_UNREGISTERING, &ar_snoc->flags) &&
 	    !test_bit(ATH10K_SNOC_FLAG_MODEM_STOPPED, &ar_snoc->flags))
@@ -1175,6 +1181,7 @@ int ath10k_qmi_deinit(struct ath10k *ar)
 
 	qmi->state = ATH10K_QMI_STATE_DEINIT;
 	qmi_handle_release(&qmi->qmi_hdl);
+	ath10k_qmi_remove_msa_permission(qmi);
 	cancel_work_sync(&qmi->event_work);
 	destroy_workqueue(qmi->event_wq);
 	kfree(qmi);
