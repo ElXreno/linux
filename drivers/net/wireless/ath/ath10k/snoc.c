@@ -838,6 +838,9 @@ static inline void ath10k_snoc_irq_disable(struct ath10k *ar)
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
 	int id;
 
+	if (!test_and_clear_bit(ATH10K_SNOC_FLAG_IRQS_ENABLED, &ar_snoc->flags))
+		return;
+
 	for (id = 0; id < CE_COUNT_MAX; id++)
 		disable_irq(ar_snoc->ce_irqs[id].irq_line);
 }
@@ -846,6 +849,9 @@ static inline void ath10k_snoc_irq_enable(struct ath10k *ar)
 {
 	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
 	int id;
+
+	if (test_and_set_bit(ATH10K_SNOC_FLAG_IRQS_ENABLED, &ar_snoc->flags))
+		return;
 
 	for (id = 0; id < CE_COUNT_MAX; id++)
 		enable_irq(ar_snoc->ce_irqs[id].irq_line);
@@ -928,9 +934,7 @@ static void ath10k_snoc_buffer_cleanup(struct ath10k *ar)
 
 static void ath10k_snoc_hif_stop(struct ath10k *ar)
 {
-	if (!test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags))
-		ath10k_snoc_irq_disable(ar);
-
+	ath10k_snoc_irq_disable(ar);
 	ath10k_core_napi_sync_disable(ar);
 	ath10k_snoc_buffer_cleanup(ar);
 	ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot hif stop\n");
@@ -944,9 +948,7 @@ static int ath10k_snoc_hif_start(struct ath10k *ar)
 
 	netif_threaded_enable(ar->napi_dev);
 	ath10k_core_napi_enable(ar);
-	/* IRQs are left enabled when we restart due to a firmware crash */
-	if (!test_bit(ATH10K_SNOC_FLAG_RECOVERY, &ar_snoc->flags))
-		ath10k_snoc_irq_enable(ar);
+	ath10k_snoc_irq_enable(ar);
 	ath10k_snoc_rx_post(ar);
 
 	clear_bit(ATH10K_SNOC_FLAG_RECOVERY, &ar_snoc->flags);
@@ -1544,6 +1546,7 @@ static int ath10k_snoc_modem_notify(struct notifier_block *nb, unsigned long act
 		if (test_bit(ATH10K_SNOC_FLAG_REGISTERED, &ar_snoc->flags)) {
 			set_bit(ATH10K_SNOC_FLAG_RECOVERY, &ar_snoc->flags);
 			set_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags);
+			ath10k_snoc_irq_disable(ar);
 			spin_lock_bh(&ce->ce_lock);
 			spin_unlock_bh(&ce->ce_lock);
 			timer_delete_sync(&ar_snoc->rx_post_retry);
