@@ -4649,9 +4649,9 @@
 			reg = <0x0 0x18350800 0x0 0x400>;
 			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
 			cpus = <&cpu6>;
-			qcom,lmh-temp-arm-millicelsius = <65000>;
-			qcom,lmh-temp-low-millicelsius = <94500>;
-			qcom,lmh-temp-high-millicelsius = <95000>;
+			qcom,lmh-temp-arm-millicelsius = <60000>;
+			qcom,lmh-temp-low-millicelsius = <84500>;
+			qcom,lmh-temp-high-millicelsius = <85000>;
 			interrupt-controller;
 			#interrupt-cells = <1>;
 		};
@@ -4661,9 +4661,9 @@
 			reg = <0x0 0x18358800 0x0 0x400>;
 			interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>;
 			cpus = <&cpu0>;
-			qcom,lmh-temp-arm-millicelsius = <65000>;
-			qcom,lmh-temp-low-millicelsius = <94500>;
-			qcom,lmh-temp-high-millicelsius = <95000>;
+			qcom,lmh-temp-arm-millicelsius = <60000>;
+			qcom,lmh-temp-low-millicelsius = <84500>;
+			qcom,lmh-temp-high-millicelsius = <85000>;
 			interrupt-controller;
 			#interrupt-cells = <1>;
 		};
@@ -4876,13 +4876,13 @@
 
 			trips {
 				cpu0_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu0_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -4923,13 +4923,13 @@
 
 			trips {
 				cpu1_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu1_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -4970,13 +4970,13 @@
 
 			trips {
 				cpu2_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu2_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -5017,13 +5017,13 @@
 
 			trips {
 				cpu3_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu3_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -5064,13 +5064,13 @@
 
 			trips {
 				cpu4_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu4_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -5111,13 +5111,13 @@
 
 			trips {
 				cpu5_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu5_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -5158,13 +5158,13 @@
 
 			trips {
 				cpu6_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu6_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -5197,13 +5197,13 @@
 
 			trips {
 				cpu7_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu7_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -5236,13 +5236,13 @@
 
 			trips {
 				cpu8_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu8_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
@@ -5275,13 +5275,13 @@
 
 			trips {
 				cpu9_alert0: trip-point0 {
-					temperature = <90000>;
+					temperature = <95000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
 
 				cpu9_alert1: trip-point1 {
-					temperature = <95000>;
+					temperature = <100000>;
 					hysteresis = <2000>;
 					type = "passive";
 				};
