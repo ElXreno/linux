@@ -1166,7 +1166,8 @@ void ath10k_debug_get_et_stats(struct ieee80211_hw *hw,
 
 	mutex_lock(&ar->conf_mutex);
 
-	if (ar->state == ATH10K_STATE_ON) {
+	if (ar->state == ATH10K_STATE_ON &&
+	    !test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags)) {
 		ret = ath10k_debug_fw_stats_request(ar);
 		if (ret) {
 			/* just print a warning and try to use older results */
