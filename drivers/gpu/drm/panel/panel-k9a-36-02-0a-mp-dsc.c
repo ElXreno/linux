@@ -13,16 +13,45 @@
 
 #include <drm/display/drm_dsc.h>
 #include <drm/display/drm_dsc_helper.h>
+#include <drm/drm_connector.h>
+#include <drm/drm_crtc.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
 
+struct k9a_36_02_0a_mp_dsc_mode {
+	struct drm_display_mode mode;
+	u8 frame_rate;
+};
+
 struct k9a_36_02_0a_mp_dsc {
 	struct drm_panel panel;
 	struct mipi_dsi_device *dsi;
+	struct drm_connector *connector;
 	struct drm_dsc_config dsc;
 	struct gpio_desc *reset_gpio;
 	bool sleep_out;
+};
+
+#define K9A_36_02_0A_MP_DSC_MODE(vfp, fps)				\
+	{								\
+		.clock = (1080 + 124 + 8 + 8) *				\
+			 (2400 + (vfp) + 4 + 8) * (fps) / 1000,		\
+		.hdisplay = 1080,					\
+		.hsync_start = 1080 + 124,				\
+		.hsync_end = 1080 + 124 + 8,				\
+		.htotal = 1080 + 124 + 8 + 8,				\
+		.vdisplay = 2400,					\
+		.vsync_start = 2400 + (vfp),				\
+		.vsync_end = 2400 + (vfp) + 4,				\
+		.vtotal = 2400 + (vfp) + 4 + 8,				\
+		.width_mm = 68,						\
+		.height_mm = 152,					\
+	}
+
+static const struct k9a_36_02_0a_mp_dsc_mode k9a_36_02_0a_mp_dsc_modes[] = {
+	{ .mode = K9A_36_02_0A_MP_DSC_MODE(4, 90), .frame_rate = 0x01 },
+	{ .mode = K9A_36_02_0A_MP_DSC_MODE(1212, 60), .frame_rate = 0x02 },
 };
 
 static inline
@@ -41,8 +70,11 @@ static void k9a_36_02_0a_mp_dsc_reset(struct k9a_36_02_0a_mp_dsc *ctx)
 	usleep_range(11000, 12000);
 }
 
-static void k9a_36_02_0a_mp_dsc_on(struct mipi_dsi_multi_context *dsi_ctx)
+static void k9a_36_02_0a_mp_dsc_on(struct mipi_dsi_multi_context *dsi_ctx,
+				   u8 frame_rate)
 {
+	const u8 frame_rate_cmd[] = { 0x2f, frame_rate };
+
 	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0xf0, 0x55, 0xaa, 0x52, 0x08, 0x00);
 	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0xb2, 0x58);
 	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0x6f, 0x02);
@@ -69,7 +101,8 @@ static void k9a_36_02_0a_mp_dsc_on(struct mipi_dsi_multi_context *dsi_ctx)
 	mipi_dsi_dcs_set_tear_on_multi(dsi_ctx, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
 	mipi_dsi_dcs_set_column_address_multi(dsi_ctx, 0x0000, 0x0437);
 	mipi_dsi_dcs_set_page_address_multi(dsi_ctx, 0x0000, 0x095f);
-	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0x2f, 0x02);
+	mipi_dsi_dcs_write_buffer_multi(dsi_ctx, frame_rate_cmd,
+					ARRAY_SIZE(frame_rate_cmd));
 	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0xff, 0xaa, 0x55, 0xa5, 0x81);
 	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0x6f, 0x0f);
 	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0xfd, 0x01, 0x5a);
@@ -120,6 +153,28 @@ static void k9a_36_02_0a_mp_dsc_off(struct mipi_dsi_multi_context *dsi_ctx)
 	mipi_dsi_msleep(dsi_ctx, 80);
 }
 
+static const struct k9a_36_02_0a_mp_dsc_mode *
+k9a_36_02_0a_mp_dsc_current_mode(struct k9a_36_02_0a_mp_dsc *ctx)
+{
+	struct drm_connector *connector = ctx->connector;
+	struct drm_crtc_state *crtc_state;
+	int i;
+
+	if (!connector || !connector->state || !connector->state->crtc)
+		return &k9a_36_02_0a_mp_dsc_modes[0];
+
+	crtc_state = connector->state->crtc->state;
+
+	for (i = 0; i < ARRAY_SIZE(k9a_36_02_0a_mp_dsc_modes); i++) {
+		if (drm_mode_match(&crtc_state->mode,
+				   &k9a_36_02_0a_mp_dsc_modes[i].mode,
+				   DRM_MODE_MATCH_TIMINGS | DRM_MODE_MATCH_CLOCK))
+			return &k9a_36_02_0a_mp_dsc_modes[i];
+	}
+
+	return &k9a_36_02_0a_mp_dsc_modes[0];
+}
+
 static int k9a_36_02_0a_mp_dsc_prepare(struct drm_panel *panel)
 {
 	struct k9a_36_02_0a_mp_dsc *ctx = to_k9a_36_02_0a_mp_dsc(panel);
@@ -132,7 +187,8 @@ static int k9a_36_02_0a_mp_dsc_prepare(struct drm_panel *panel)
 	}
 	k9a_36_02_0a_mp_dsc_reset(ctx);
 
-	k9a_36_02_0a_mp_dsc_on(&dsi_ctx);
+	k9a_36_02_0a_mp_dsc_on(&dsi_ctx,
+			       k9a_36_02_0a_mp_dsc_current_mode(ctx)->frame_rate);
 	ctx->sleep_out = true;
 
 	drm_dsc_pps_payload_pack(&pps, &ctx->dsc);
@@ -161,37 +217,32 @@ static int k9a_36_02_0a_mp_dsc_unprepare(struct drm_panel *panel)
 	return 0;
 }
 
-static const struct drm_display_mode k9a_36_02_0a_mp_dsc_mode = {
-	.clock = (1080 + 124 + 8 + 8) * (2400 + 1212 + 4 + 8) * 60 / 1000,
-	.hdisplay = 1080,
-	.hsync_start = 1080 + 124,
-	.hsync_end = 1080 + 124 + 8,
-	.htotal = 1080 + 124 + 8 + 8,
-	.vdisplay = 2400,
-	.vsync_start = 2400 + 1212,
-	.vsync_end = 2400 + 1212 + 4,
-	.vtotal = 2400 + 1212 + 4 + 8,
-	.width_mm = 68,
-	.height_mm = 152,
-};
-
 static int k9a_36_02_0a_mp_dsc_get_modes(struct drm_panel *panel,
 					 struct drm_connector *connector)
 {
+	struct k9a_36_02_0a_mp_dsc *ctx = to_k9a_36_02_0a_mp_dsc(panel);
 	struct drm_display_mode *mode;
+	int i;
 
-	mode = drm_mode_duplicate(connector->dev, &k9a_36_02_0a_mp_dsc_mode);
-	if (!mode)
-		return -ENOMEM;
+	for (i = 0; i < ARRAY_SIZE(k9a_36_02_0a_mp_dsc_modes); i++) {
+		mode = drm_mode_duplicate(connector->dev,
+					  &k9a_36_02_0a_mp_dsc_modes[i].mode);
+		if (!mode)
+			return -ENOMEM;
 
-	drm_mode_set_name(mode);
+		drm_mode_set_name(mode);
 
-	mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_mode_probed_add(connector, mode);
+		mode->type = DRM_MODE_TYPE_DRIVER;
+		if (i == 0)
+			mode->type |= DRM_MODE_TYPE_PREFERRED;
+		drm_mode_probed_add(connector, mode);
+	}
 
-	return 1;
+	connector->display_info.width_mm = k9a_36_02_0a_mp_dsc_modes[0].mode.width_mm;
+	connector->display_info.height_mm = k9a_36_02_0a_mp_dsc_modes[0].mode.height_mm;
+	ctx->connector = connector;
+
+	return ARRAY_SIZE(k9a_36_02_0a_mp_dsc_modes);
 }
 
 static const struct drm_panel_funcs k9a_36_02_0a_mp_dsc_panel_funcs = {
