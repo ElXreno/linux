@@ -263,7 +263,7 @@ static bool ath10k_debug_fw_stats_multi_event(struct ath10k *ar)
 void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 {
 	struct ath10k_fw_stats stats = {};
-	bool is_start, is_started, is_end, is_last;
+	bool is_start, is_started, is_end, is_last, fw_pushed;
 	size_t num_peers;
 	size_t num_vdevs;
 	int ret;
@@ -295,7 +295,9 @@ void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 		ath10k_sta_update_rx_duration(ar, &stats);
 
 	if (ar->debug.fw_stats_done) {
-		if (!ath10k_peer_stats_enabled(ar))
+		fw_pushed = ath10k_debug_fw_stats_multi_event(ar) &&
+			    list_empty(&stats.pdevs);
+		if (!ath10k_peer_stats_enabled(ar) && !fw_pushed)
 			ath10k_warn(ar, "received unsolicited stats update event\n");
 
 		goto free;
