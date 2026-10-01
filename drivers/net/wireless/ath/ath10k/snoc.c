@@ -1402,6 +1402,8 @@ int ath10k_snoc_fw_indication(struct ath10k *ar, u64 type)
 	case ATH10K_QMI_EVENT_FW_DOWN_IND:
 		set_bit(ATH10K_SNOC_FLAG_RECOVERY, &ar_snoc->flags);
 		set_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags);
+		if (test_bit(ATH10K_SNOC_FLAG_REGISTERED, &ar_snoc->flags))
+			ieee80211_stop_queues(ar->hw);
 		break;
 	default:
 		ath10k_err(ar, "invalid fw indication: %llx\n", type);
@@ -1546,6 +1548,7 @@ static int ath10k_snoc_modem_notify(struct notifier_block *nb, unsigned long act
 		if (test_bit(ATH10K_SNOC_FLAG_REGISTERED, &ar_snoc->flags)) {
 			set_bit(ATH10K_SNOC_FLAG_RECOVERY, &ar_snoc->flags);
 			set_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags);
+			ieee80211_stop_queues(ar->hw);
 			ath10k_snoc_irq_disable(ar);
 			spin_lock_bh(&ce->ce_lock);
 			spin_unlock_bh(&ce->ce_lock);
