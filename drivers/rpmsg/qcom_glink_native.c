@@ -159,6 +159,8 @@ enum {
  * @intent_req_result: Result of intent request
  * @intent_received: flag indicating that an intent has been received
  * @intent_req_wq: wait queue for intent_req signalling
+ * @rx_backlog:	messages received before the endpoint could take them
+ * @rx_backlog_len: number of messages in @rx_backlog
  */
 struct glink_channel {
 	struct rpmsg_endpoint ept;
@@ -191,7 +193,18 @@ struct glink_channel {
 	int intent_req_result;
 	bool intent_received;
 	wait_queue_head_t intent_req_wq;
+
+	struct list_head rx_backlog;
+	unsigned int rx_backlog_len;
 };
+
+struct glink_rx_backlog {
+	struct list_head node;
+	size_t len;
+	u8 data[];
+};
+
+#define GLINK_RX_BACKLOG_MAX	64
 
 #define to_glink_channel(_ept) container_of(_ept, struct glink_channel, ept)
 
@@ -249,12 +262,24 @@ static struct glink_channel *qcom_glink_alloc_channel(struct qcom_glink *glink,
 
 	INIT_LIST_HEAD(&channel->done_intents);
 	INIT_WORK(&channel->intent_work, qcom_glink_rx_done_work);
+	INIT_LIST_HEAD(&channel->rx_backlog);
 
 	idr_init(&channel->liids);
 	idr_init(&channel->riids);
 	kref_init(&channel->refcount);
 
 	return channel;
+}
+
+static void qcom_glink_rx_purge_backlog(struct glink_channel *channel)
+{
+	struct glink_rx_backlog *msg, *tmp;
+
+	list_for_each_entry_safe(msg, tmp, &channel->rx_backlog, node) {
+		list_del(&msg->node);
+		kfree(msg);
+	}
+	channel->rx_backlog_len = 0;
 }
 
 static void qcom_glink_channel_release(struct kref *ref)
@@ -268,6 +293,8 @@ static void qcom_glink_channel_release(struct kref *ref)
 
 	/* cancel pending rx_done work */
 	cancel_work_sync(&channel->intent_work);
+
+	qcom_glink_rx_purge_backlog(channel);
 
 	spin_lock_irqsave(&channel->intent_lock, flags);
 	/* Free all non-reuse intents pending rx_done work */
@@ -895,6 +922,54 @@ static int qcom_glink_rx_defer(struct qcom_glink *glink, size_t extra)
 	return 0;
 }
 
+static void qcom_glink_rx_deliver(struct qcom_glink *glink,
+				  struct glink_channel *channel,
+				  void *data, size_t len)
+{
+	struct glink_rx_backlog *msg;
+
+	lockdep_assert_held(&channel->recv_lock);
+
+	if (list_empty(&channel->rx_backlog) && channel->ept.cb &&
+	    channel->ept.cb(channel->ept.rpdev, data, len, channel->ept.priv,
+			    RPMSG_ADDR_ANY) != -EAGAIN)
+		return;
+
+	if (channel->rx_backlog_len >= GLINK_RX_BACKLOG_MAX) {
+		dev_warn_ratelimited(glink->dev, "%s: backlog full, dropping message\n",
+				     channel->name);
+		return;
+	}
+
+	msg = kmalloc(struct_size(msg, data, len), GFP_ATOMIC);
+	if (!msg)
+		return;
+
+	msg->len = len;
+	memcpy(msg->data, data, len);
+	list_add_tail(&msg->node, &channel->rx_backlog);
+	channel->rx_backlog_len++;
+}
+
+static void qcom_glink_rx_flush_backlog(struct glink_channel *channel)
+{
+	struct glink_rx_backlog *msg, *tmp;
+	unsigned long flags;
+
+	spin_lock_irqsave(&channel->recv_lock, flags);
+	list_for_each_entry_safe(msg, tmp, &channel->rx_backlog, node) {
+		if (!channel->ept.cb ||
+		    channel->ept.cb(channel->ept.rpdev, msg->data, msg->len,
+				    channel->ept.priv, RPMSG_ADDR_ANY) == -EAGAIN)
+			break;
+
+		list_del(&msg->node);
+		channel->rx_backlog_len--;
+		kfree(msg);
+	}
+	spin_unlock_irqrestore(&channel->recv_lock, flags);
+}
+
 static int qcom_glink_rx_data(struct qcom_glink *glink, size_t avail)
 {
 	struct glink_core_rx_intent *intent;
@@ -992,13 +1067,8 @@ static int qcom_glink_rx_data(struct qcom_glink *glink, size_t avail)
 	/* Handle message when no fragments remain to be received */
 	if (!left_size) {
 		spin_lock(&channel->recv_lock);
-		if (channel->ept.cb) {
-			channel->ept.cb(channel->ept.rpdev,
-					intent->data,
-					intent->offset,
-					channel->ept.priv,
-					RPMSG_ADDR_ANY);
-		}
+		qcom_glink_rx_deliver(glink, channel, intent->data,
+				      intent->offset);
 		spin_unlock(&channel->recv_lock);
 
 		intent->offset = 0;
@@ -1349,10 +1419,14 @@ static struct rpmsg_endpoint *qcom_glink_create_ept(struct rpmsg_device *rpdev,
 	}
 
 	ept = &channel->ept;
+	spin_lock_irqsave(&channel->recv_lock, flags);
 	ept->rpdev = rpdev;
 	ept->cb = cb;
 	ept->priv = priv;
 	ept->ops = &glink_endpoint_ops;
+	spin_unlock_irqrestore(&channel->recv_lock, flags);
+
+	qcom_glink_rx_flush_backlog(channel);
 
 	return ept;
 }
@@ -1369,6 +1443,8 @@ static int qcom_glink_announce_create(struct rpmsg_device *rpdev)
 	int num_groups = 1;
 	__be32 *val = defaults;
 	int size;
+
+	qcom_glink_rx_flush_backlog(channel);
 
 	if (glink->intentless || !completion_done(&channel->open_ack))
 		return 0;
@@ -1416,6 +1492,7 @@ static void qcom_glink_destroy_ept(struct rpmsg_endpoint *ept)
 
 	spin_lock_irqsave(&channel->recv_lock, flags);
 	channel->ept.cb = NULL;
+	qcom_glink_rx_purge_backlog(channel);
 	spin_unlock_irqrestore(&channel->recv_lock, flags);
 
 	qcom_glink_send_close_req(glink, channel);
