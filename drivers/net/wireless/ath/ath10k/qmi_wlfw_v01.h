@@ -43,6 +43,8 @@
 #define QMI_WLFW_MSA_READY_RESP_V01 0x002E
 #define QMI_WLFW_CAL_UPDATE_REQ_V01 0x0029
 #define QMI_WLFW_INI_REQ_V01 0x002F
+#define QMI_WLFW_SHUTDOWN_REQ_V01 0x0043
+#define QMI_WLFW_SHUTDOWN_RESP_V01 0x0043
 #define QMI_WLFW_BDF_DOWNLOAD_RESP_V01 0x0025
 #define QMI_WLFW_REJUVENATE_ACK_RESP_V01 0x003A
 #define QMI_WLFW_MSA_INFO_RESP_V01 0x002D
@@ -476,6 +478,21 @@ struct wlfw_ini_resp_msg_v01 {
 
 #define WLFW_INI_RESP_MSG_V01_MAX_MSG_LEN 7
 extern const struct qmi_elem_info wlfw_ini_resp_msg_v01_ei[];
+
+struct wlfw_shutdown_req_msg_v01 {
+	u8 shutdown_valid;
+	u8 shutdown;
+};
+
+#define WLFW_SHUTDOWN_REQ_MSG_V01_MAX_MSG_LEN 4
+extern const struct qmi_elem_info wlfw_shutdown_req_msg_v01_ei[];
+
+struct wlfw_shutdown_resp_msg_v01 {
+	struct qmi_response_type_v01 resp;
+};
+
+#define WLFW_SHUTDOWN_RESP_MSG_V01_MAX_MSG_LEN 7
+extern const struct qmi_elem_info wlfw_shutdown_resp_msg_v01_ei[];
 
 struct wlfw_athdiag_read_req_msg_v01 {
 	u32 offset;

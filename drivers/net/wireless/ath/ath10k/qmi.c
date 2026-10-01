@@ -542,6 +542,43 @@ int ath10k_qmi_wlan_disable(struct ath10k *ar)
 	return ath10k_qmi_mode_send_sync_msg(ar, QMI_WLFW_OFF_V01);
 }
 
+int ath10k_qmi_modem_shutdown(struct ath10k *ar)
+{
+	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
+	struct ath10k_qmi *qmi = ar_snoc->qmi;
+	struct wlfw_shutdown_resp_msg_v01 resp = {};
+	struct wlfw_shutdown_req_msg_v01 req = {};
+	struct qmi_txn txn;
+	int ret;
+
+	ret = qmi_txn_init(&qmi->qmi_hdl, &txn,
+			   wlfw_shutdown_resp_msg_v01_ei, &resp);
+	if (ret < 0)
+		return ret;
+
+	req.shutdown_valid = 1;
+	req.shutdown = 1;
+
+	ret = qmi_send_request(&qmi->qmi_hdl, NULL, &txn,
+			       QMI_WLFW_SHUTDOWN_REQ_V01,
+			       WLFW_SHUTDOWN_REQ_MSG_V01_MAX_MSG_LEN,
+			       wlfw_shutdown_req_msg_v01_ei, &req);
+	if (ret < 0) {
+		qmi_txn_cancel(&txn);
+		return ret;
+	}
+
+	ret = qmi_txn_wait(&txn, ATH10K_QMI_TIMEOUT * HZ);
+	if (ret < 0)
+		return ret;
+
+	if (resp.resp.result != QMI_RESULT_SUCCESS_V01)
+		return -EINVAL;
+
+	ath10k_dbg(ar, ATH10K_DBG_QMI, "qmi modem shutdown req completed\n");
+	return 0;
+}
+
 static void ath10k_qmi_add_wlan_ver_smem(struct ath10k *ar, const char *fw_build_id)
 {
 	u8 *table_ptr;
