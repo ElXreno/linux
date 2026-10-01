@@ -455,8 +455,11 @@ static int qcom_cpufreq_hw_lmh_init(struct cpufreq_policy *policy, int index)
 	data->throttle_irq = platform_get_irq_optional(pdev, index);
 	if (data->throttle_irq == -ENXIO)
 		return 0;
-	if (data->throttle_irq < 0)
-		return data->throttle_irq;
+	if (data->throttle_irq < 0) {
+		dev_warn(&pdev->dev, "No LMh interrupt for domain %d: %d\n", index,
+			 data->throttle_irq);
+		return 0;
+	}
 
 	data->cancel_throttle = false;
 
