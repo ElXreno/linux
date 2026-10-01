@@ -254,10 +254,16 @@ static void ath10k_debug_fw_stats_reset(struct ath10k *ar)
 	spin_unlock_bh(&ar->data_lock);
 }
 
+static bool ath10k_debug_fw_stats_multi_event(struct ath10k *ar)
+{
+	return ar->running_fw->fw_file.wmi_op_version ==
+	       ATH10K_FW_WMI_OP_VERSION_TLV;
+}
+
 void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 {
 	struct ath10k_fw_stats stats = {};
-	bool is_start, is_started, is_end;
+	bool is_start, is_started, is_end, is_last;
 	size_t num_peers;
 	size_t num_vdevs;
 	int ret;
@@ -301,6 +307,8 @@ void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 		    !list_empty(&stats.pdevs));
 	is_end = (!list_empty(&ar->debug.fw_stats.pdevs) &&
 		  !list_empty(&stats.pdevs));
+	is_last = ath10k_debug_fw_stats_multi_event(ar) &&
+		  !list_empty(&stats.peers);
 
 	if (is_start)
 		list_splice_tail_init(&stats.pdevs, &ar->debug.fw_stats.pdevs);
@@ -314,6 +322,9 @@ void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 	is_started = !list_empty(&ar->debug.fw_stats.pdevs);
 
 	if (is_started && !is_end) {
+		if (is_last)
+			ar->debug.fw_stats_done = true;
+
 		if (num_peers >= ATH10K_MAX_NUM_PEER_IDS) {
 			/* Although this is unlikely impose a sane limit to
 			 * prevent firmware from DoS-ing the host.
@@ -354,7 +365,9 @@ free:
 
 int ath10k_debug_fw_stats_request(struct ath10k *ar)
 {
+	bool multi_event = ath10k_debug_fw_stats_multi_event(ar);
 	unsigned long timeout, time_left;
+	bool requested = false;
 	int ret;
 
 	lockdep_assert_held(&ar->conf_mutex);
@@ -367,12 +380,18 @@ int ath10k_debug_fw_stats_request(struct ath10k *ar)
 		if (time_after(jiffies, timeout))
 			return -ETIMEDOUT;
 
-		reinit_completion(&ar->debug.fw_stats_complete);
+		if (!multi_event || !requested) {
+			reinit_completion(&ar->debug.fw_stats_complete);
 
-		ret = ath10k_wmi_request_stats(ar, ar->fw_stats_req_mask);
-		if (ret) {
-			ath10k_warn(ar, "could not request stats (%d)\n", ret);
-			return ret;
+			ret = ath10k_wmi_request_stats(ar,
+						       ar->fw_stats_req_mask);
+			if (ret) {
+				ath10k_warn(ar, "could not request stats (%d)\n",
+					    ret);
+				return ret;
+			}
+
+			requested = true;
 		}
 
 		time_left =
