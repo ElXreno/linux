@@ -80,6 +80,7 @@ enum qca_flags {
 	QCA_BT_OFF,
 	QCA_ROM_FW,
 	QCA_DEBUGFS_CREATED,
+	QCA_SOC_BOOTING,
 };
 
 enum qca_capabilities {
@@ -1284,6 +1285,9 @@ static int qca_recv(struct hci_uart *hu, const void *data, int count)
 	if (!test_bit(HCI_UART_REGISTERED, &hu->flags))
 		return -EUNATCH;
 
+	if (test_bit(QCA_SOC_BOOTING, &qca->flags))
+		return count;
+
 	qca->rx_skb = h4_recv_buf(hu, qca->rx_skb, data, count,
 				  qca_recv_pkts, ARRAY_SIZE(qca_recv_pkts));
 	if (IS_ERR(qca->rx_skb)) {
@@ -1769,6 +1773,7 @@ static int qca_port_reopen(struct hci_uart *hu)
 static int qca_regulator_init(struct hci_uart *hu)
 {
 	enum qca_btsoc_type soc_type = qca_soc_type(hu);
+	struct qca_data *qca = hu->priv;
 	struct qca_serdev *qcadev;
 	int ret;
 	bool sw_ctrl_state;
@@ -1828,16 +1833,22 @@ static int qca_regulator_init(struct hci_uart *hu)
 	case QCA_WCN3990:
 	case QCA_WCN3991:
 	case QCA_WCN3998:
+		set_bit(QCA_SOC_BOOTING, &qca->flags);
 		ret = qca_send_power_pulse(hu, true);
-		if (ret)
+		if (ret) {
+			clear_bit(QCA_SOC_BOOTING, &qca->flags);
 			return ret;
+		}
 		break;
 
 	default:
 		break;
 	}
 
-	return qca_port_reopen(hu);
+	ret = qca_port_reopen(hu);
+	clear_bit(QCA_SOC_BOOTING, &qca->flags);
+
+	return ret;
 }
 
 static int qca_power_on(struct hci_dev *hdev)
