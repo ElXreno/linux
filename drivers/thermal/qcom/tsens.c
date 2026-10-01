@@ -700,6 +700,7 @@ static irqreturn_t tsens_irq_thread(int irq, void *data)
 {
 	struct tsens_priv *priv = data;
 	struct tsens_irq_data d;
+	unsigned long flags;
 	int i;
 
 	for (i = 0; i < priv->num_sensors; i++) {
@@ -711,7 +712,25 @@ static irqreturn_t tsens_irq_thread(int irq, void *data)
 		if (!tsens_threshold_violated(priv, hw_id, &d))
 			continue;
 
+		if (tsens_version(priv) >= VER_2_X) {
+			spin_lock_irqsave(&priv->ul_lock, flags);
+			if (d.up_viol)
+				tsens_set_interrupt(priv, hw_id, UPPER, false);
+			if (d.low_viol)
+				tsens_set_interrupt(priv, hw_id, LOWER, false);
+			spin_unlock_irqrestore(&priv->ul_lock, flags);
+		}
+
 		thermal_zone_device_update(s->tzd, THERMAL_EVENT_UNSPECIFIED);
+
+		if (tsens_version(priv) >= VER_2_X) {
+			spin_lock_irqsave(&priv->ul_lock, flags);
+			if (d.up_viol)
+				tsens_set_interrupt(priv, hw_id, UPPER, true);
+			if (d.low_viol)
+				tsens_set_interrupt(priv, hw_id, LOWER, true);
+			spin_unlock_irqrestore(&priv->ul_lock, flags);
+		}
 
 		if (tsens_version(priv) < VER_0_1) {
 			/* Constraint: There is only 1 interrupt control register for all
