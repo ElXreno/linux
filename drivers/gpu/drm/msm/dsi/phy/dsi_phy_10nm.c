@@ -126,7 +126,7 @@ static void dsi_pll_calc_dec_frac(struct dsi_pll_10nm *pll, struct dsi_pll_confi
 	divider = fref * 2;
 
 	multiplier = 1 << FRAC_BITS;
-	dec_multiple = div_u64(pll_freq * multiplier, divider);
+	dec_multiple = DIV_ROUND_CLOSEST_ULL(pll_freq * multiplier, divider);
 	dec = div_u64_rem(dec_multiple, multiplier, &frac);
 
 	if (pll_freq <= 1900000000UL)
@@ -448,9 +448,17 @@ static int dsi_pll_10nm_clk_determine_rate(struct clk_hw *hw,
 					   struct clk_rate_request *req)
 {
 	struct dsi_pll_10nm *pll_10nm = to_pll_10nm(hw);
+	u64 divider = VCO_REF_CLK_RATE * 2;
+	u64 dec_multiple;
+	u32 frac;
+	u64 dec;
 
 	req->rate = clamp_t(unsigned long, req->rate,
 			    pll_10nm->phy->cfg->min_pll_rate, pll_10nm->phy->cfg->max_pll_rate);
+
+	dec_multiple = DIV_ROUND_CLOSEST_ULL((u64)req->rate << FRAC_BITS, divider);
+	dec = div_u64_rem(dec_multiple, 1 << FRAC_BITS, &frac);
+	req->rate = dec * divider + ((divider * frac) >> FRAC_BITS);
 
 	return 0;
 }
