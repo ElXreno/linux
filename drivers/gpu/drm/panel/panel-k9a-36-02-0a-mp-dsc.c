@@ -171,8 +171,8 @@ static const struct drm_display_mode k9a_36_02_0a_mp_dsc_mode = {
 	.vsync_start = 2400 + 1212,
 	.vsync_end = 2400 + 1212 + 4,
 	.vtotal = 2400 + 1212 + 4 + 8,
-	.width_mm = 683,
-	.height_mm = 1517,
+	.width_mm = 68,
+	.height_mm = 152,
 };
 
 static int k9a_36_02_0a_mp_dsc_get_modes(struct drm_panel *panel,
