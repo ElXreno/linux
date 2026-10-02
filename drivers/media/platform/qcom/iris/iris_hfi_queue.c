@@ -243,13 +243,24 @@ static void iris_hfi_queue_deinit(struct iris_iface_q_info *iface_q)
 	iface_q->device_addr = 0;
 }
 
+u32 iris_hfi_queue_uc_region_size(void)
+{
+	u32 queue_size;
+
+	/* Iris hardware requires 4K queue alignment */
+	queue_size = ALIGN(sizeof(struct iris_hfi_queue_table_header) +
+			   (IFACEQ_QUEUE_SIZE * IFACEQ_NUMQ), SZ_4K);
+
+	/* Iris hardware requires 1M queue alignment */
+	return ALIGN(SFR_SIZE + queue_size, SZ_1M);
+}
+
 int iris_hfi_queues_init(struct iris_core *core)
 {
 	struct iris_hfi_queue_table_header *q_tbl_hdr;
 	u32 queue_size;
 
-	/* Iris hardware requires 4K queue alignment */
-	queue_size = ALIGN((sizeof(*q_tbl_hdr) + (IFACEQ_QUEUE_SIZE * IFACEQ_NUMQ)), SZ_4K);
+	queue_size = iris_hfi_queue_uc_region_size();
 	core->iface_q_table_vaddr = dma_alloc_attrs(core->dev, queue_size,
 						    &core->iface_q_table_daddr,
 						    GFP_KERNEL, DMA_ATTR_WRITE_COMBINE);
@@ -306,8 +317,7 @@ void iris_hfi_queues_deinit(struct iris_core *core)
 	core->sfr_vaddr = NULL;
 	core->sfr_daddr = 0;
 
-	queue_size = ALIGN(sizeof(struct iris_hfi_queue_table_header) +
-		(IFACEQ_QUEUE_SIZE * IFACEQ_NUMQ), SZ_4K);
+	queue_size = iris_hfi_queue_uc_region_size();
 
 	dma_free_attrs(core->dev, queue_size, core->iface_q_table_vaddr,
 		       core->iface_q_table_daddr, DMA_ATTR_WRITE_COMBINE);

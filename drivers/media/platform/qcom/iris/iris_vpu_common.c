@@ -49,19 +49,13 @@ static void iris_vpu_interrupt_init(struct iris_core *core)
 
 static void iris_vpu_setup_ucregion_memory_map(struct iris_core *core)
 {
-	u32 queue_size, value;
 	const struct vpu_ops *vpu_ops = core->iris_platform_data->vpu_ops;
-
-	/* Iris hardware requires 4K queue alignment */
-	queue_size = ALIGN(sizeof(struct iris_hfi_queue_table_header) +
-		(IFACEQ_QUEUE_SIZE * IFACEQ_NUMQ), SZ_4K);
+	u32 value;
 
 	value = (u32)core->iface_q_table_daddr;
 	writel(value, core->reg_base + UC_REGION_ADDR);
 
-	/* Iris hardware requires 1M queue alignment */
-	value = ALIGN(SFR_SIZE + queue_size, SZ_1M);
-	writel(value, core->reg_base + UC_REGION_SIZE);
+	writel(iris_hfi_queue_uc_region_size(), core->reg_base + UC_REGION_SIZE);
 
 	value = (u32)core->iface_q_table_daddr;
 	writel(value, core->reg_base + QTBL_ADDR);
