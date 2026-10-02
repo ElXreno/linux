@@ -53,6 +53,7 @@ enum iris_fmt_type_cap {
  * @fw_caps: array of supported instance firmware capabilities
  * @buffers: array of different iris buffers
  * @fw_min_count: minimnum count of buffers needed by fw
+ * @fw_buf_size: buffer sizes reported by fw, 0 when not reported
  * @state: instance state
  * @sub_state: instance sub state
  * @once_per_session_set: boolean to set once per session property
@@ -100,6 +101,7 @@ struct iris_inst {
 	struct platform_inst_fw_cap	fw_caps[INST_FW_CAP_MAX];
 	struct iris_buffers		buffers[BUF_TYPE_MAX];
 	u32				fw_min_count;
+	u32				fw_buf_size[BUF_TYPE_MAX];
 	enum iris_inst_state		state;
 	enum iris_inst_sub_state	sub_state;
 	bool				once_per_session_set;

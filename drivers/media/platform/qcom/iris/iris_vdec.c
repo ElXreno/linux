@@ -358,11 +358,25 @@ void iris_vdec_src_change(struct iris_inst *inst)
 	v4l2_event_queue_fh(&inst->fh, &event);
 }
 
+static int iris_vdec_get_fw_buf_req(struct iris_inst *inst)
+{
+	const struct iris_hfi_session_ops *hfi_ops = inst->hfi_session_ops;
+
+	if (!inst->core->iris_platform_data->hfi_4xx || !hfi_ops->session_get_buf_req)
+		return 0;
+
+	return hfi_ops->session_get_buf_req(inst);
+}
+
 int iris_vdec_streamon_input(struct iris_inst *inst)
 {
 	int ret;
 
 	ret = iris_set_properties(inst, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+	if (ret)
+		return ret;
+
+	ret = iris_vdec_get_fw_buf_req(inst);
 	if (ret)
 		return ret;
 

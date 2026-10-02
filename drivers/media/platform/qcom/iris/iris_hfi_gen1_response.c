@@ -79,7 +79,8 @@ static void iris_hfi_gen1_read_changed_params(struct iris_inst *inst,
 		case HFI_PROPERTY_CONFIG_BUFFER_REQUIREMENTS:
 			data_ptr += sizeof(u32);
 			bufreq = (struct hfi_buffer_requirements *)data_ptr;
-			event.buf_count = bufreq->count_min;
+			event.buf_count = core->iris_platform_data->hfi_4xx ?
+					  bufreq->hold_count : bufreq->count_min;
 			data_ptr += sizeof(*bufreq);
 			break;
 		case HFI_INDEX_EXTRADATA_INPUT_CROP:
@@ -542,6 +543,59 @@ struct iris_hfi_gen1_response_pkt_info {
 	u32 pkt_sz;
 };
 
+static int iris_hfi_gen1_buf_type_to_driver(struct iris_inst *inst, u32 hfi_type)
+{
+	switch (hfi_type) {
+	case HFI_BUFFER_INPUT:
+		return BUF_INPUT;
+	case HFI_BUFFER_OUTPUT:
+		return iris_split_mode_enabled(inst) ? BUF_DPB : BUF_OUTPUT;
+	case HFI_BUFFER_OUTPUT2:
+		return iris_split_mode_enabled(inst) ? BUF_OUTPUT : -EINVAL;
+	case HFI_BUFFER_INTERNAL_PERSIST:
+		return BUF_ARP;
+	case HFI_BUFFER_INTERNAL_PERSIST_1:
+		return BUF_PERSIST;
+	case HFI_BUFFER_INTERNAL_SCRATCH:
+		return BUF_BIN;
+	case HFI_BUFFER_INTERNAL_SCRATCH_1:
+		return BUF_SCRATCH_1;
+	case HFI_BUFFER_INTERNAL_SCRATCH_2:
+		return BUF_SCRATCH_2;
+	default:
+		return -EINVAL;
+	}
+}
+
+static void iris_hfi_gen1_session_property_info(struct iris_inst *inst, void *packet)
+{
+	struct hfi_msg_session_property_info_pkt *pkt = packet;
+	struct hfi_buffer_requirements *req;
+	u32 payload, count, i;
+	int type;
+
+	if (pkt->num_properties != 1 ||
+	    pkt->property != HFI_PROPERTY_CONFIG_BUFFER_REQUIREMENTS)
+		return;
+
+	payload = pkt->shdr.hdr.size - sizeof(*pkt);
+	count = payload / sizeof(*req);
+	req = (struct hfi_buffer_requirements *)pkt->data;
+
+	for (i = 0; i < count; i++, req++) {
+		dev_dbg(inst->core->dev,
+			"bufreq type %#x size %u region %u hold %u min %u actual %u align %u\n",
+			req->type, req->size, req->region_size, req->hold_count,
+			req->count_min, req->count_actual, req->alignment);
+
+		type = iris_hfi_gen1_buf_type_to_driver(inst, req->type);
+		if (type < 0)
+			continue;
+
+		inst->fw_buf_size[type] = req->size;
+	}
+}
+
 static const struct iris_hfi_gen1_response_pkt_info pkt_infos[] = {
 	{
 	 .pkt = HFI_MSG_EVENT_NOTIFY,
@@ -586,6 +640,10 @@ static const struct iris_hfi_gen1_response_pkt_info pkt_infos[] = {
 	{
 	 .pkt = HFI_MSG_SESSION_FLUSH,
 	 .pkt_sz = sizeof(struct hfi_msg_session_flush_done_pkt),
+	},
+	{
+	 .pkt = HFI_MSG_SESSION_PROPERTY_INFO,
+	 .pkt_sz = sizeof(struct hfi_msg_session_property_info_pkt),
 	},
 	{
 	 .pkt = HFI_MSG_SESSION_RELEASE_RESOURCES,
@@ -656,6 +714,9 @@ static void iris_hfi_gen1_handle_response(struct iris_core *core, void *response
 			iris_hfi_gen1_session_etb_done(inst, hdr);
 		} else if (hdr->pkt_type == HFI_MSG_SESSION_FILL_BUFFER) {
 			iris_hfi_gen1_session_ftb_done(inst, hdr);
+		} else if (hdr->pkt_type == HFI_MSG_SESSION_PROPERTY_INFO) {
+			iris_hfi_gen1_session_property_info(inst, hdr);
+			complete(&inst->completion);
 		} else {
 			struct hfi_msg_session_hdr_pkt *shdr;
 
