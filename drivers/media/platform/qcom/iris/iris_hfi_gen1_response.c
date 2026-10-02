@@ -485,8 +485,8 @@ static void iris_hfi_gen1_session_ftb_done(struct iris_inst *inst, void *packet)
 			if (!(buf->attr & BUF_ATTR_QUEUED))
 				continue;
 
-			found = (buf->index == output_tag &&
-				 buf->data_offset == offset);
+			found = buf->index == output_tag &&
+				(inst->domain == ENCODER || buf->data_offset == offset);
 
 			if (found)
 				break;
