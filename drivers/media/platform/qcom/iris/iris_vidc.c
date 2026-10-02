@@ -300,6 +300,9 @@ int iris_close(struct file *filp)
 	iris_check_num_queued_internal_buffers(inst, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
 	iris_check_num_queued_internal_buffers(inst, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
 	iris_remove_session(inst);
+	if (inst->eos_kvaddr)
+		dma_free_attrs(inst->core->dev, SZ_4K, inst->eos_kvaddr, inst->eos_device_addr,
+			       DMA_ATTR_WRITE_COMBINE | DMA_ATTR_NO_KERNEL_MAPPING);
 	mutex_unlock(&inst->lock);
 	mutex_destroy(&inst->ctx_q_lock);
 	mutex_destroy(&inst->lock);

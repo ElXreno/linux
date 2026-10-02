@@ -57,6 +57,8 @@ enum iris_fmt_type_cap {
  * @buffers: array of different iris buffers
  * @fw_min_count: minimnum count of buffers needed by fw
  * @fw_buf_size: buffer sizes reported by fw, 0 when not reported
+ * @eos_kvaddr: kernel address of the HFI 4xx encoder EOS buffer
+ * @eos_device_addr: device address of the HFI 4xx encoder EOS buffer
  * @state: instance state
  * @sub_state: instance sub state
  * @once_per_session_set: boolean to set once per session property
@@ -105,6 +107,8 @@ struct iris_inst {
 	struct iris_buffers		buffers[BUF_TYPE_MAX];
 	u32				fw_min_count;
 	u32				fw_buf_size[BUF_TYPE_MAX];
+	void				*eos_kvaddr;
+	dma_addr_t			eos_device_addr;
 	enum iris_inst_state		state;
 	enum iris_inst_sub_state	sub_state;
 	bool				once_per_session_set;
