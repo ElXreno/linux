@@ -846,6 +846,22 @@ static int iris_hfi_gen1_set_resolution(struct iris_inst *inst, u32 plane)
 	struct hfi_framesize fs;
 	int ret;
 
+	if (inst->domain == ENCODER) {
+		fs.buffer_type = HFI_BUFFER_INPUT;
+		fs.width = inst->enc_raw_width;
+		fs.height = inst->enc_raw_height;
+
+		ret = hfi_gen1_set_property(inst, ptype, &fs, sizeof(fs));
+		if (ret)
+			return ret;
+
+		fs.buffer_type = HFI_BUFFER_OUTPUT;
+		fs.width = inst->enc_scale_width;
+		fs.height = inst->enc_scale_height;
+
+		return hfi_gen1_set_property(inst, ptype, &fs, sizeof(fs));
+	}
+
 	if (!iris_drc_pending(inst) && !(inst->sub_state & IRIS_INST_SUB_FIRST_IPSC)) {
 		fs.buffer_type = HFI_BUFFER_INPUT;
 		fs.width = inst->fmt_src->fmt.pix_mp.width;
@@ -855,11 +871,8 @@ static int iris_hfi_gen1_set_resolution(struct iris_inst *inst, u32 plane)
 		if (ret)
 			return ret;
 	}
-	if (inst->domain == DECODER)
-		fs.buffer_type = HFI_BUFFER_OUTPUT2;
-	else
-		fs.buffer_type = HFI_BUFFER_OUTPUT;
 
+	fs.buffer_type = HFI_BUFFER_OUTPUT2;
 	fs.width = inst->fmt_dst->fmt.pix_mp.width;
 	fs.height = inst->fmt_dst->fmt.pix_mp.height;
 
