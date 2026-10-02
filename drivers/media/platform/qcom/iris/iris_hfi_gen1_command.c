@@ -863,7 +863,19 @@ static int iris_hfi_gen1_set_raw_format(struct iris_inst *inst, u32 plane)
 
 	if (inst->domain == DECODER) {
 		pixelformat = inst->fmt_dst->fmt.pix_mp.pixelformat;
-		if (iris_split_mode_enabled(inst)) {
+		if (pixelformat == V4L2_PIX_FMT_P010) {
+			fmt.buffer_type = HFI_BUFFER_OUTPUT;
+			fmt.format = HFI_COLOR_FORMAT_YUV420_TP10_UBWC;
+
+			ret = hfi_gen1_set_property(inst, ptype, &fmt, sizeof(fmt));
+			if (ret)
+				return ret;
+
+			fmt.buffer_type = HFI_BUFFER_OUTPUT2;
+			fmt.format = HFI_COLOR_FORMAT_P010;
+
+			ret = hfi_gen1_set_property(inst, ptype, &fmt, sizeof(fmt));
+		} else if (iris_split_mode_enabled(inst)) {
 			fmt.buffer_type = HFI_BUFFER_OUTPUT;
 			fmt.format = HFI_COLOR_FORMAT_NV12_UBWC;
 
