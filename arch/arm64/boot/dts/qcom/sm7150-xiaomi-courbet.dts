@@ -71,6 +71,10 @@
 			no-map;
 		};
 
+		ramoops@9d800000 {
+			ecc-size = <127>;
+		};
+
 		gpu_mem: gpu@97f15000 {
 			reg = <0x0 0x97f15000 0x0 0x2000>;
 			no-map;
