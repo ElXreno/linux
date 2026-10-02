@@ -30,6 +30,8 @@ static const u32 iris_fmts_vpu1_dec[] = {
 	[IRIS_FMT_H264] = V4L2_PIX_FMT_H264,
 	[IRIS_FMT_HEVC] = V4L2_PIX_FMT_HEVC,
 	[IRIS_FMT_VP9] = V4L2_PIX_FMT_VP9,
+	[IRIS_FMT_VP8] = V4L2_PIX_FMT_VP8,
+	[IRIS_FMT_MPEG1] = V4L2_PIX_FMT_MPEG1,
 };
 
 static struct platform_inst_caps platform_inst_cap_vpu1 = {

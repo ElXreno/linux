@@ -140,6 +140,15 @@ static int iris_hfi_gen1_session_open(struct iris_inst *inst)
 	case V4L2_PIX_FMT_VP9:
 		codec = HFI_VIDEO_CODEC_VP9;
 		break;
+	case V4L2_PIX_FMT_VP8:
+		codec = HFI_VIDEO_CODEC_VP8;
+		break;
+	case V4L2_PIX_FMT_MPEG2:
+		codec = HFI_VIDEO_CODEC_MPEG2;
+		break;
+	case V4L2_PIX_FMT_MPEG1:
+		codec = HFI_VIDEO_CODEC_MPEG1;
+		break;
 	}
 
 	packet.shdr.hdr.size = sizeof(struct hfi_session_open_pkt);

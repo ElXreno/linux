@@ -517,7 +517,8 @@ int iris_set_stage(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id
 	u32 work_mode = STAGE_2;
 
 	if (inst->domain == DECODER) {
-		if (iris_res_is_less_than(width, height, 1280, 720))
+		if (iris_res_is_less_than(width, height, 1280, 720) ||
+		    iris_codec_is_mpeg(inst->codec))
 			work_mode = STAGE_1;
 	}
 
@@ -533,6 +534,9 @@ int iris_set_pipe(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id)
 	const struct iris_hfi_session_ops *hfi_ops = inst->hfi_session_ops;
 	u32 work_route = inst->fw_caps[PIPE].value;
 	u32 hfi_id = inst->fw_caps[cap_id].hfi_id;
+
+	if (inst->domain == DECODER && iris_codec_is_mpeg(inst->codec))
+		return 0;
 
 	return hfi_ops->session_set_property(inst, hfi_id,
 					     HFI_HOST_FLAGS_NONE,
