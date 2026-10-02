@@ -220,10 +220,14 @@ iris_hfi_gen1_sys_event_notify(struct iris_core *core, void *packet)
 	struct hfi_msg_event_notify_pkt *pkt = packet;
 	struct iris_inst *instance;
 
-	if (pkt->event_id == HFI_EVENT_SYS_ERROR)
+	if (pkt->event_id == HFI_EVENT_SYS_ERROR) {
 		dev_err(core->dev, "sys error (type: %x, session id:%x, data1:%x, data2:%x)\n",
 			pkt->event_id, pkt->shdr.session_id, pkt->event_data1,
 			pkt->event_data2);
+		if (core->sfr_vaddr)
+			dev_err(core->dev, "sfr: %.*s\n", (int)(SFR_SIZE - sizeof(u32)),
+				(char *)core->sfr_vaddr + sizeof(u32));
+	}
 
 	core->state = IRIS_CORE_ERROR;
 
