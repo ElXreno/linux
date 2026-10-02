@@ -514,6 +514,20 @@ static int iris_hfi_gen1_session_drain(struct iris_inst *inst, u32 plane)
 		ip_pkt.flags = HFI_BUFFERFLAG_EOS;
 		ip_pkt.packet_buffer = 0xdeadb000;
 
+		if (inst->core->iris_platform_data->hfi_4xx) {
+			if (!inst->eos_kvaddr)
+				inst->eos_kvaddr = dma_alloc_attrs(inst->core->dev, SZ_4K,
+								   &inst->eos_device_addr,
+								   GFP_KERNEL,
+								   DMA_ATTR_WRITE_COMBINE |
+								   DMA_ATTR_NO_KERNEL_MAPPING);
+			if (!inst->eos_kvaddr)
+				return -ENOMEM;
+
+			ip_pkt.packet_buffer = inst->eos_device_addr;
+			ip_pkt.alloc_len = SZ_4K;
+		}
+
 		return iris_hfi_queue_cmd_write(inst->core, &ip_pkt, ip_pkt.shdr.hdr.size);
 	}
 

@@ -371,7 +371,8 @@ static void iris_hfi_gen1_session_etb_done(struct iris_inst *inst, void *packet)
 	bool found = false;
 
 	/* EOS buffer sent via drain won't be in v4l2 buffer list */
-	if (pkt->packet_buffer == 0xdeadb000)
+	if (pkt->packet_buffer == 0xdeadb000 ||
+	    (inst->eos_kvaddr && pkt->packet_buffer == inst->eos_device_addr))
 		return;
 
 	v4l2_m2m_for_each_src_buf_safe(m2m_ctx, m2m_buffer, n) {
