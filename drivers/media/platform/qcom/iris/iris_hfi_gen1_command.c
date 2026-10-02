@@ -30,15 +30,47 @@ static u32 iris_hfi_gen1_buf_type_from_driver(enum iris_buffer_type buffer_type)
 	}
 }
 
+static int iris_hfi_gen1_sys_debug_config(struct iris_core *core)
+{
+	struct hfi_sys_set_property_pkt *pkt;
+	struct hfi_debug_config *config;
+	u32 packet_size;
+	int ret;
+
+	packet_size = struct_size(pkt, data, 1) + sizeof(*config);
+	pkt = kzalloc(packet_size, GFP_KERNEL);
+	if (!pkt)
+		return -ENOMEM;
+
+	config = (struct hfi_debug_config *)&pkt->data[1];
+
+	pkt->hdr.size = packet_size;
+	pkt->hdr.pkt_type = HFI_CMD_SYS_SET_PROPERTY;
+	pkt->num_properties = 1;
+	pkt->data[0] = HFI_PROPERTY_SYS_DEBUG_CONFIG;
+	config->config = HFI_DEBUG_MSG_ERROR | HFI_DEBUG_MSG_FATAL;
+	config->mode = HFI_DEBUG_MODE_QUEUE;
+
+	ret = iris_hfi_queue_cmd_write_locked(core, pkt, pkt->hdr.size);
+	kfree(pkt);
+
+	return ret;
+}
+
 static int iris_hfi_gen1_sys_init(struct iris_core *core)
 {
 	struct hfi_sys_init_pkt sys_init_pkt;
+	int ret;
 
 	sys_init_pkt.hdr.size = sizeof(sys_init_pkt);
 	sys_init_pkt.hdr.pkt_type = HFI_CMD_SYS_INIT;
 	sys_init_pkt.arch_type = HFI_VIDEO_ARCH_OX;
 
-	return iris_hfi_queue_cmd_write_locked(core, &sys_init_pkt, sys_init_pkt.hdr.size);
+	ret = iris_hfi_queue_cmd_write_locked(core, &sys_init_pkt, sys_init_pkt.hdr.size);
+	if (ret)
+		return ret;
+
+	return iris_hfi_gen1_sys_debug_config(core);
 }
 
 static int iris_hfi_gen1_sys_image_version(struct iris_core *core)
