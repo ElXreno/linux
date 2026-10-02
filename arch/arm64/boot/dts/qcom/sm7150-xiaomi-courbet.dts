@@ -294,6 +294,7 @@
 
 &venus {
 	firmware-name = "qcom/sm7150/xiaomi/courbet/venus.mbn";
+	status = "okay";
 };
 
 &wifi {
