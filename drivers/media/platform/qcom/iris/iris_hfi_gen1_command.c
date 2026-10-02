@@ -996,6 +996,8 @@ static int iris_hfi_gen1_set_multistream(struct iris_inst *inst, u32 plane)
 	return ret;
 }
 
+static int iris_hfi_gen1_session_get_buf_req(struct iris_inst *inst);
+
 static int iris_hfi_gen1_set_bufsize(struct iris_inst *inst, u32 plane)
 {
 	const u32 ptype = HFI_PROPERTY_PARAM_BUFFER_SIZE_ACTUAL;
@@ -1003,6 +1005,12 @@ static int iris_hfi_gen1_set_bufsize(struct iris_inst *inst, u32 plane)
 	int ret;
 
 	if (iris_split_mode_enabled(inst)) {
+		if (inst->core->iris_platform_data->hfi_4xx) {
+			ret = iris_hfi_gen1_session_get_buf_req(inst);
+			if (ret)
+				return ret;
+		}
+
 		bufsz.type = HFI_BUFFER_OUTPUT;
 		bufsz.size = inst->core->iris_firmware_desc->get_vpu_buffer_size(inst, BUF_DPB);
 
