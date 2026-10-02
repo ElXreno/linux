@@ -33,7 +33,13 @@
 
 static void iris_vpu_interrupt_init(struct iris_core *core)
 {
+	const struct vpu_ops *vpu_ops = core->iris_platform_data->vpu_ops;
 	u32 mask_val;
+
+	if (vpu_ops->interrupt_init) {
+		vpu_ops->interrupt_init(core);
+		return;
+	}
 
 	mask_val = readl(core->reg_base + WRAPPER_INTR_MASK);
 	mask_val &= ~(WRAPPER_INTR_MASK_A2HWD_BMSK |
@@ -73,7 +79,11 @@ static void iris_vpu_setup_ucregion_memory_map(struct iris_core *core)
 
 int iris_vpu_boot_firmware(struct iris_core *core)
 {
+	const struct vpu_ops *vpu_ops = core->iris_platform_data->vpu_ops;
 	u32 ctrl_init = BIT(0), ctrl_status = 0, count = 0, max_tries = 1000;
+
+	if (vpu_ops->boot_firmware)
+		return vpu_ops->boot_firmware(core);
 
 	iris_vpu_setup_ucregion_memory_map(core);
 
@@ -104,12 +114,25 @@ int iris_vpu_boot_firmware(struct iris_core *core)
 
 void iris_vpu_raise_interrupt(struct iris_core *core)
 {
+	const struct vpu_ops *vpu_ops = core->iris_platform_data->vpu_ops;
+
+	if (vpu_ops->raise_interrupt) {
+		vpu_ops->raise_interrupt(core);
+		return;
+	}
+
 	writel(1 << CPU_IC_SOFTINT_H2A_SHFT, core->reg_base + CPU_IC_SOFTINT);
 }
 
 void iris_vpu_clear_interrupt(struct iris_core *core)
 {
+	const struct vpu_ops *vpu_ops = core->iris_platform_data->vpu_ops;
 	u32 intr_status, mask;
+
+	if (vpu_ops->clear_interrupt) {
+		vpu_ops->clear_interrupt(core);
+		return;
+	}
 
 	intr_status = readl(core->reg_base + WRAPPER_INTR_STATUS);
 	mask = (WRAPPER_INTR_STATUS_A2H_BMSK |
@@ -124,6 +147,11 @@ void iris_vpu_clear_interrupt(struct iris_core *core)
 
 int iris_vpu_watchdog(struct iris_core *core, u32 intr_status)
 {
+	const struct vpu_ops *vpu_ops = core->iris_platform_data->vpu_ops;
+
+	if (vpu_ops->watchdog)
+		return vpu_ops->watchdog(core, intr_status);
+
 	if (intr_status & WRAPPER_INTR_STATUS_A2HWD_BMSK) {
 		dev_err(core->dev, "received watchdog interrupt\n");
 		return -ETIME;
@@ -134,9 +162,13 @@ int iris_vpu_watchdog(struct iris_core *core, u32 intr_status)
 
 int iris_vpu_prepare_pc(struct iris_core *core)
 {
+	const struct vpu_ops *vpu_ops = core->iris_platform_data->vpu_ops;
 	u32 wfi_status, idle_status, pc_ready;
 	u32 ctrl_status, val = 0;
 	int ret;
+
+	if (vpu_ops->prepare_pc)
+		return vpu_ops->prepare_pc(core);
 
 	ctrl_status = readl(core->reg_base + CTRL_STATUS);
 	pc_ready = ctrl_status & CTRL_STATUS_PC_READY;
@@ -503,5 +535,12 @@ err:
 
 void iris_vpu_set_preset_registers(struct iris_core *core)
 {
+	const struct vpu_ops *vpu_ops = core->iris_platform_data->vpu_ops;
+
+	if (vpu_ops->set_preset_registers) {
+		vpu_ops->set_preset_registers(core);
+		return;
+	}
+
 	writel(0x0, core->reg_base + 0xb0088);
 }
