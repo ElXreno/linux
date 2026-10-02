@@ -61,6 +61,46 @@ properties:
   opp-table:
     type: object
 
+  '#address-cells':
+    const: 2
+
+  '#size-cells':
+    const: 2
+
+  ranges: true
+
+  secure-non-pixel:
+    type: object
+    description:
+      Secure non-pixel context bank. The firmware requires the encoder
+      persist buffer to be mapped through this stream and owned by the
+      CP_NON_PIXEL VM.
+
+    properties:
+      compatible:
+        const: qcom,venus-secure-context
+
+      iommus:
+        maxItems: 1
+
+      qcom,secure-vmid:
+        $ref: /schemas/types.yaml#/definitions/uint32
+        description: Secure VM that owns the buffers and reads the page tables.
+        const: 11
+
+      memory-region:
+        items:
+          - description: CMA pool for the secure buffers
+          - description: reserved IOVA range below the non-pixel aperture
+
+    required:
+      - compatible
+      - iommus
+      - qcom,secure-vmid
+      - memory-region
+
+    additionalProperties: false
+
   video-decoder:
     type: object
 
