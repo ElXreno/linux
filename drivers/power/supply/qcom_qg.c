@@ -84,6 +84,8 @@
 #define QG_SHUTDOWN_SOC_MAX_DELTA	10
 #define QG_POLL_INTERVAL_MS		30000
 #define QG_DISCHARGE_THRESHOLD_UA	50000
+#define QG_RELAX_CURRENT_UA		50000
+#define QG_RELAX_TIME_NS		(30ULL * 60 * NSEC_PER_SEC)
 #define QG_UAUS_PER_UAH			3600000000LL
 
 struct qcom_qg_chip {
@@ -107,6 +109,7 @@ struct qcom_qg_chip {
 	int ocv_uv;
 	int soc;
 	int status;
+	u64 active_ns;
 };
 
 static int qcom_qg_raw_to_uv(u32 raw)
@@ -405,13 +408,18 @@ static void qcom_qg_store(struct qcom_qg_chip *chip)
 
 static void qcom_qg_update(struct qcom_qg_chip *chip)
 {
-	int soc, status;
+	int soc, status, current_ua;
 
 	lockdep_assert_held(&chip->lock);
 
 	status = qcom_qg_charger_status(chip);
 	if (status == POWER_SUPPLY_STATUS_FULL)
 		chip->charge_uaus = chip->charge_full_uaus;
+
+	if (status == POWER_SUPPLY_STATUS_CHARGING ||
+	    qcom_qg_get_current(chip, QG_S2_NORMAL_AVG_I_DATA0_REG, &current_ua) ||
+	    abs(current_ua) > QG_RELAX_CURRENT_UA)
+		chip->active_ns = ktime_get_boottime_ns();
 
 	soc = div64_s64(chip->charge_uaus * 100 + chip->charge_full_uaus / 2,
 			chip->charge_full_uaus);
@@ -484,6 +492,11 @@ static int qcom_qg_good_ocv(struct qcom_qg_chip *chip)
 		return ret;
 
 	chip->ocv_uv = qcom_qg_raw_to_uv(raw);
+	if (ktime_get_boottime_ns() - chip->active_ns < QG_RELAX_TIME_NS) {
+		dev_dbg(chip->dev, "good OCV %d uV ignored, battery not relaxed\n", chip->ocv_uv);
+		return 0;
+	}
+
 	qcom_qg_set_soc(chip, qcom_qg_ocv_to_soc(chip, chip->ocv_uv));
 	dev_dbg(chip->dev, "good OCV %d uV\n", chip->ocv_uv);
 
@@ -782,6 +795,7 @@ static int qcom_qg_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, chip);
 
 	mutex_lock(&chip->lock);
+	chip->active_ns = ktime_get_boottime_ns();
 	ret = qcom_qg_init_charge(chip);
 	if (!ret)
 		ret = qcom_qg_collect(chip, true);
