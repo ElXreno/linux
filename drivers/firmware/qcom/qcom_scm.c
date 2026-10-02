@@ -2919,8 +2919,11 @@ static int qcom_scm_probe(struct platform_device *pdev)
 	/*
 	 * Disable SDI if indicated by DT that it is enabled by default.
 	 */
-	if (of_property_read_bool(pdev->dev.of_node, "qcom,sdi-enabled") || !download_mode)
-		qcom_scm_disable_sdi();
+	if (of_property_read_bool(pdev->dev.of_node, "qcom,sdi-enabled") || !download_mode) {
+		ret = qcom_scm_disable_sdi();
+		if (ret)
+			dev_warn(scm->dev, "failed to disable SDI: %d\n", ret);
+	}
 
 	/*
 	 * Initialize the QSEECOM interface.
