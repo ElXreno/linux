@@ -66,6 +66,8 @@ struct qcom_ubwc_cfg_data;
  * @message_queue: shared interface queue to receive responses from firmware
  * @debug_queue: shared interface queue to receive debug info from firmware
  * @lock: a lock for this strucure
+ * @secure_lock: serializes creation of the secure non-pixel context
+ * @secure_nonpixel_dev: device of the secure non-pixel context bank, if created
  * @response_packet: a pointer to response packet from fw to driver
  * @header_id: id of packet header
  * @packet_id: id of packet
@@ -111,6 +113,8 @@ struct iris_core {
 	struct iris_iface_q_info		message_queue;
 	struct iris_iface_q_info		debug_queue;
 	struct mutex				lock; /* lock for core related operations */
+	struct mutex				secure_lock;
+	struct device				*secure_nonpixel_dev;
 	u8					*response_packet;
 	u32					header_id;
 	u32					packet_id;

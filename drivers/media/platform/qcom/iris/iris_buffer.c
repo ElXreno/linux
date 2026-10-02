@@ -3,6 +3,12 @@
  * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/firmware/qcom/qcom_scm.h>
+#include <linux/iommu.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#include <linux/of_reserved_mem.h>
+#include <linux/platform_device.h>
 #include <media/v4l2-event.h>
 #include <media/v4l2-mem2mem.h>
 
@@ -525,6 +531,136 @@ void iris_get_internal_buffers(struct iris_inst *inst, u32 plane)
 	}
 }
 
+static struct device *iris_get_secure_nonpixel_dev(struct iris_core *core)
+{
+	const struct tz_cp_config *cp = core->iris_platform_data->tz_cp_config_data;
+	struct platform_device *pdev;
+	struct device_node *np;
+	int ret;
+
+	guard(mutex)(&core->secure_lock);
+
+	if (core->secure_nonpixel_dev)
+		return core->secure_nonpixel_dev;
+
+	np = of_get_compatible_child(core->dev->of_node, "qcom,venus-secure-context");
+	if (!np)
+		return ERR_PTR(-ENODEV);
+
+	pdev = of_platform_device_create(np, NULL, core->dev);
+	if (!pdev) {
+		of_node_put(np);
+		return ERR_PTR(-ENODEV);
+	}
+
+	ret = of_dma_configure(&pdev->dev, np, true);
+	if (!ret)
+		ret = dma_set_mask_and_coherent(&pdev->dev, (u64)cp->cp_nonpixel_start +
+						cp->cp_nonpixel_size - 1);
+	if (!ret)
+		ret = of_reserved_mem_device_init_by_idx(&pdev->dev, np, 0);
+	of_node_put(np);
+	if (!ret && !iommu_get_domain_for_dev(&pdev->dev))
+		ret = -ENODEV;
+	if (ret) {
+		of_reserved_mem_device_release(&pdev->dev);
+		of_platform_device_destroy(&pdev->dev, NULL);
+		return ERR_PTR(ret);
+	}
+
+	core->secure_nonpixel_dev = &pdev->dev;
+
+	return core->secure_nonpixel_dev;
+}
+
+void iris_put_secure_nonpixel_dev(struct iris_core *core)
+{
+	guard(mutex)(&core->secure_lock);
+
+	if (!core->secure_nonpixel_dev)
+		return;
+
+	of_reserved_mem_device_release(core->secure_nonpixel_dev);
+	of_platform_device_destroy(core->secure_nonpixel_dev, NULL);
+	core->secure_nonpixel_dev = NULL;
+}
+
+static bool iris_buffer_needs_secure_persist(struct iris_inst *inst,
+					     enum iris_buffer_type buffer_type)
+{
+	return inst->core->iris_platform_data->hfi_4xx &&
+	       inst->domain == ENCODER && buffer_type == BUF_ARP;
+}
+
+static int iris_secure_assign(struct iris_buffer *buffer)
+{
+	const struct qcom_scm_vmperm perm = {
+		QCOM_SCM_VMID_CP_NON_PIXEL, QCOM_SCM_PERM_RW,
+	};
+	u64 src = BIT_ULL(QCOM_SCM_VMID_HLOS);
+
+	return qcom_scm_assign_mem(buffer->phys, buffer->buffer_size, &src, &perm, 1);
+}
+
+static int iris_secure_unassign(struct iris_buffer *buffer)
+{
+	const struct qcom_scm_vmperm perm = {
+		QCOM_SCM_VMID_HLOS, QCOM_SCM_PERM_RWX,
+	};
+	u64 src = BIT_ULL(QCOM_SCM_VMID_CP_NON_PIXEL);
+
+	return qcom_scm_assign_mem(buffer->phys, buffer->buffer_size, &src, &perm, 1);
+}
+
+static int iris_alloc_secure_persist(struct iris_inst *inst, struct iris_buffer *buffer)
+{
+	const struct tz_cp_config *cp = inst->core->iris_platform_data->tz_cp_config_data;
+	struct iommu_domain *domain;
+	struct device *dev;
+	size_t offset;
+	int ret;
+
+	dev = iris_get_secure_nonpixel_dev(inst->core);
+	if (IS_ERR(dev))
+		return PTR_ERR(dev);
+
+	domain = iommu_get_domain_for_dev(dev);
+	buffer->dma_dev = dev;
+	buffer->buffer_size = PAGE_ALIGN(buffer->buffer_size);
+	buffer->dma_attrs = DMA_ATTR_FORCE_CONTIGUOUS | DMA_ATTR_NO_KERNEL_MAPPING;
+	buffer->kvaddr = dma_alloc_attrs(dev, buffer->buffer_size, &buffer->device_addr,
+					 GFP_KERNEL | __GFP_ZERO, buffer->dma_attrs);
+	if (!buffer->kvaddr)
+		return -ENOMEM;
+
+	buffer->phys = iommu_iova_to_phys(domain, buffer->device_addr);
+	ret = buffer->phys ? 0 : -EINVAL;
+	for (offset = 0; !ret && offset < buffer->buffer_size; offset += PAGE_SIZE)
+		if (iommu_iova_to_phys(domain, buffer->device_addr + offset) !=
+		    buffer->phys + offset)
+			ret = -EINVAL;
+
+	if (!ret && (buffer->device_addr < cp->cp_nonpixel_start ||
+		     buffer->device_addr + buffer->buffer_size >
+		     (u64)cp->cp_nonpixel_start + cp->cp_nonpixel_size))
+		ret = -ERANGE;
+
+	if (!ret)
+		ret = iris_secure_assign(buffer);
+
+	if (ret) {
+		dev_err(inst->core->dev, "secure persist at %pad (%zu bytes) failed: %d\n",
+			&buffer->device_addr, buffer->buffer_size, ret);
+		dma_free_attrs(dev, buffer->buffer_size, buffer->kvaddr,
+			       buffer->device_addr, buffer->dma_attrs);
+		return ret;
+	}
+
+	buffer->secure = true;
+
+	return 0;
+}
+
 static int iris_create_internal_buffer(struct iris_inst *inst,
 				       enum iris_buffer_type buffer_type, u32 index)
 {
@@ -543,6 +679,21 @@ static int iris_create_internal_buffer(struct iris_inst *inst,
 	buffer->type = buffer_type;
 	buffer->index = index;
 	buffer->buffer_size = buffers->size;
+
+	if (iris_buffer_needs_secure_persist(inst, buffer_type)) {
+		int ret = iris_alloc_secure_persist(inst, buffer);
+
+		if (ret) {
+			kfree(buffer);
+			return ret;
+		}
+
+		list_add_tail(&buffer->list, &buffers->list);
+
+		return 0;
+	}
+
+	buffer->dma_dev = core->dev;
 	buffer->dma_attrs = DMA_ATTR_WRITE_COMBINE | DMA_ATTR_NO_KERNEL_MAPPING;
 
 	buffer->kvaddr = dma_alloc_attrs(core->dev, buffer->buffer_size,
@@ -682,10 +833,21 @@ int iris_queue_internal_buffers(struct iris_inst *inst, u32 plane)
 
 int iris_destroy_internal_buffer(struct iris_inst *inst, struct iris_buffer *buffer)
 {
-	struct iris_core *core = inst->core;
+	int ret;
+
+	if (buffer->secure) {
+		ret = iris_secure_unassign(buffer);
+		if (ret) {
+			dev_err(inst->core->dev, "failed to reclaim secure persist %pad: %d\n",
+				&buffer->device_addr, ret);
+			list_del(&buffer->list);
+			return ret;
+		}
+		buffer->secure = false;
+	}
 
 	list_del(&buffer->list);
-	dma_free_attrs(core->dev, buffer->buffer_size, buffer->kvaddr,
+	dma_free_attrs(buffer->dma_dev, buffer->buffer_size, buffer->kvaddr,
 		       buffer->device_addr, buffer->dma_attrs);
 	kfree(buffer);
 

@@ -8,6 +8,7 @@
 
 #include <media/videobuf2-v4l2.h>
 
+struct iris_core;
 struct iris_inst;
 
 #define to_iris_buffer(ptr)	container_of(ptr, struct iris_buffer, vb2)
@@ -77,6 +78,9 @@ enum iris_buffer_attributes {
  * @data_offset: accessible buffer offset from base address
  * @data_size: data size in bytes
  * @device_addr: device address of the buffer
+ * @phys: physical address of a secure buffer
+ * @dma_dev: device the buffer was allocated for
+ * @secure: buffer is assigned to the CP_NON_PIXEL VM
  * @kvaddr: kernel virtual address of the buffer
  * @dma_attrs: dma attributes
  * @flags: buffer flags. It is represented as bit masks.
@@ -94,6 +98,9 @@ struct iris_buffer {
 	u32				data_offset;
 	size_t				data_size;
 	dma_addr_t			device_addr;
+	phys_addr_t			phys;
+	struct device			*dma_dev;
+	bool				secure;
 	void				*kvaddr;
 	unsigned long			dma_attrs;
 	u32				flags; /* V4L2_BUF_FLAG_* */
@@ -113,6 +120,7 @@ int iris_create_internal_buffers(struct iris_inst *inst, u32 plane);
 int iris_queue_internal_buffers(struct iris_inst *inst, u32 plane);
 int iris_queue_internal_deferred_buffers(struct iris_inst *inst, enum iris_buffer_type buffer_type);
 int iris_destroy_internal_buffer(struct iris_inst *inst, struct iris_buffer *buffer);
+void iris_put_secure_nonpixel_dev(struct iris_core *core);
 int iris_destroy_all_internal_buffers(struct iris_inst *inst, u32 plane);
 int iris_destroy_dequeued_internal_buffers(struct iris_inst *inst, u32 plane);
 int iris_alloc_and_queue_persist_bufs(struct iris_inst *inst, enum iris_buffer_type buf_type);
