@@ -316,13 +316,14 @@ static int iris_hfi_gen1_queue_input_buffer(struct iris_inst *inst, struct iris_
 {
 	struct hfi_session_empty_buffer_compressed_pkt com_ip_pkt;
 	struct hfi_session_empty_buffer_uncompressed_pkt uncom_ip_pkt;
+	u64 timestamp_us = div_u64(buf->timestamp, NSEC_PER_USEC);
 
 	if (inst->domain == DECODER) {
 		com_ip_pkt.shdr.hdr.size = sizeof(struct hfi_session_empty_buffer_compressed_pkt);
 		com_ip_pkt.shdr.hdr.pkt_type = HFI_CMD_SESSION_EMPTY_BUFFER;
 		com_ip_pkt.shdr.session_id = inst->session_id;
-		com_ip_pkt.time_stamp_hi = upper_32_bits(buf->timestamp);
-		com_ip_pkt.time_stamp_lo = lower_32_bits(buf->timestamp);
+		com_ip_pkt.time_stamp_hi = upper_32_bits(timestamp_us);
+		com_ip_pkt.time_stamp_lo = lower_32_bits(timestamp_us);
 		com_ip_pkt.flags = 0;
 		com_ip_pkt.mark_target = 0;
 		com_ip_pkt.mark_data = 0;
@@ -338,8 +339,8 @@ static int iris_hfi_gen1_queue_input_buffer(struct iris_inst *inst, struct iris_
 			sizeof(struct hfi_session_empty_buffer_uncompressed_pkt);
 		uncom_ip_pkt.shdr.hdr.pkt_type = HFI_CMD_SESSION_EMPTY_BUFFER;
 		uncom_ip_pkt.shdr.session_id = inst->session_id;
-		uncom_ip_pkt.time_stamp_hi = upper_32_bits(buf->timestamp);
-		uncom_ip_pkt.time_stamp_lo = lower_32_bits(buf->timestamp);
+		uncom_ip_pkt.time_stamp_hi = upper_32_bits(timestamp_us);
+		uncom_ip_pkt.time_stamp_lo = lower_32_bits(timestamp_us);
 		uncom_ip_pkt.view_id = 0;
 		uncom_ip_pkt.flags = buf->flags;
 		uncom_ip_pkt.mark_target = 0;
