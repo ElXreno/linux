@@ -374,7 +374,7 @@ release:
 static int qcom_qg_charger_status(struct qcom_qg_chip *chip)
 {
 	union power_supply_propval val;
-	int current_ua;
+	int avg_ua, last_ua;
 
 	if (power_supply_get_property_from_supplier(chip->batt_psy,
 						    POWER_SUPPLY_PROP_STATUS, &val))
@@ -382,8 +382,10 @@ static int qcom_qg_charger_status(struct qcom_qg_chip *chip)
 
 	if ((val.intval == POWER_SUPPLY_STATUS_CHARGING ||
 	     val.intval == POWER_SUPPLY_STATUS_NOT_CHARGING) &&
-	    !qcom_qg_get_current(chip, QG_S2_NORMAL_AVG_I_DATA0_REG, &current_ua) &&
-	    current_ua < -QG_DISCHARGE_THRESHOLD_UA)
+	    !qcom_qg_get_current(chip, QG_S2_NORMAL_AVG_I_DATA0_REG, &avg_ua) &&
+	    !qcom_qg_get_current(chip, QG_LAST_ADC_I_DATA0_REG, &last_ua) &&
+	    avg_ua < -QG_DISCHARGE_THRESHOLD_UA &&
+	    last_ua < -QG_DISCHARGE_THRESHOLD_UA)
 		return POWER_SUPPLY_STATUS_DISCHARGING;
 
 	return val.intval;
