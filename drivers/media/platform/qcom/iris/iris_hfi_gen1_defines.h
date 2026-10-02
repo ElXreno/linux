@@ -111,6 +111,8 @@
 #define HFI_COLOR_FORMAT_NV12_UBWC			0x8002
 #define HFI_COLOR_FORMAT_YUV420_TP10_UBWC		0xc002
 
+#define HFI_LEVEL_AUTO					0xffffffff
+
 #define HFI_BITDEPTH_8					0x00000
 #define HFI_BITDEPTH_10					0x20002
 

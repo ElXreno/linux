@@ -629,7 +629,9 @@ iris_hfi_gen1_packet_session_set_property(struct hfi_session_set_property_pkt *p
 			/* Profile not supported, falling back to high */
 			pl->profile = V4L2_MPEG_VIDEO_H264_PROFILE_HIGH;
 
-		if (!pl->level)
+		if (pl->level == HFI_LEVEL_AUTO)
+			pl->level = 0;
+		else if (!pl->level)
 			/* Level not supported, falling back to 1 */
 			pl->level = 1;
 
@@ -1184,6 +1186,7 @@ static int iris_hfi_gen1_session_set_config_params(struct iris_inst *inst, u32 p
 static int iris_hfi_gen1_session_get_buf_req(struct iris_inst *inst)
 {
 	struct hfi_session_get_property_pkt packet;
+	struct hfi_buffer_size_actual bufsz;
 	int ret;
 
 	packet.shdr.hdr.size = sizeof(packet);
@@ -1198,7 +1201,15 @@ static int iris_hfi_gen1_session_get_buf_req(struct iris_inst *inst)
 	if (ret)
 		return ret;
 
-	return iris_wait_for_session_response(inst, false);
+	ret = iris_wait_for_session_response(inst, false);
+	if (ret || inst->domain != ENCODER)
+		return ret;
+
+	bufsz.type = HFI_BUFFER_OUTPUT;
+	bufsz.size = inst->buffers[BUF_OUTPUT].size;
+
+	return hfi_gen1_set_property(inst, HFI_PROPERTY_PARAM_BUFFER_SIZE_ACTUAL,
+				     &bufsz, sizeof(bufsz));
 }
 
 static const struct iris_hfi_session_ops iris_hfi_gen1_session_ops = {

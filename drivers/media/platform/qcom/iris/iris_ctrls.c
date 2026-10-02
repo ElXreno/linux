@@ -589,6 +589,33 @@ int iris_set_level(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id
 					     &hfi_value, sizeof(u32));
 }
 
+static void iris_hfi_4xx_profile_level(u32 codec, struct hfi_profile_level *pl)
+{
+	if (codec == V4L2_PIX_FMT_HEVC) {
+		pl->profile = pl->profile == V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10 ? 0x2 : 0x1;
+	} else {
+		switch (pl->profile) {
+		case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
+			pl->profile = 0x1;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE:
+			pl->profile = 0x20;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
+			pl->profile = 0x2;
+			break;
+		case V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_HIGH:
+			pl->profile = 0x40;
+			break;
+		default:
+			pl->profile = 0x4;
+			break;
+		}
+	}
+
+	pl->level = HFI_LEVEL_AUTO;
+}
+
 int iris_set_profile_level_gen1(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id)
 {
 	const struct iris_hfi_session_ops *hfi_ops = inst->hfi_session_ops;
@@ -602,6 +629,9 @@ int iris_set_profile_level_gen1(struct iris_inst *inst, enum platform_inst_fw_ca
 		pl.profile = inst->fw_caps[PROFILE_HEVC].value;
 		pl.level = inst->fw_caps[LEVEL_HEVC].value;
 	}
+
+	if (inst->core->iris_platform_data->hfi_4xx)
+		iris_hfi_4xx_profile_level(inst->codec, &pl);
 
 	return hfi_ops->session_set_property(inst, hfi_id,
 					     HFI_HOST_FLAGS_NONE,
