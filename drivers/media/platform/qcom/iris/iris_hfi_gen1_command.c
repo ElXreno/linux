@@ -1152,6 +1152,26 @@ static int iris_hfi_gen1_session_set_config_params(struct iris_inst *inst, u32 p
 	return 0;
 }
 
+static int iris_hfi_gen1_session_get_buf_req(struct iris_inst *inst)
+{
+	struct hfi_session_get_property_pkt packet;
+	int ret;
+
+	packet.shdr.hdr.size = sizeof(packet);
+	packet.shdr.hdr.pkt_type = HFI_CMD_SESSION_GET_PROPERTY;
+	packet.shdr.session_id = inst->session_id;
+	packet.num_properties = 1;
+	packet.data = HFI_PROPERTY_CONFIG_BUFFER_REQUIREMENTS;
+
+	reinit_completion(&inst->completion);
+
+	ret = iris_hfi_queue_cmd_write(inst->core, &packet, packet.shdr.hdr.size);
+	if (ret)
+		return ret;
+
+	return iris_wait_for_session_response(inst, false);
+}
+
 static const struct iris_hfi_session_ops iris_hfi_gen1_session_ops = {
 	.session_open = iris_hfi_gen1_session_open,
 	.session_set_config_params = iris_hfi_gen1_session_set_config_params,
@@ -1163,6 +1183,7 @@ static const struct iris_hfi_session_ops iris_hfi_gen1_session_ops = {
 	.session_stop = iris_hfi_gen1_session_stop,
 	.session_drain = iris_hfi_gen1_session_drain,
 	.session_close = iris_hfi_gen1_session_close,
+	.session_get_buf_req = iris_hfi_gen1_session_get_buf_req,
 };
 
 static struct iris_inst *iris_hfi_gen1_get_instance(void)
