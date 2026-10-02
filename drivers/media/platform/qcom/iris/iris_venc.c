@@ -89,6 +89,19 @@ static const u32 iris_venc_formats_out[] = {
 	[IRIS_FMT_QC08C] = V4L2_PIX_FMT_QC08C,
 };
 
+static void iris_venc_cap_formats(struct iris_inst *inst, const u32 **fmt, unsigned int *size)
+{
+	const struct iris_platform_data *data = inst->core->iris_platform_data;
+
+	if (data->inst_iris_fmts_enc) {
+		*fmt = data->inst_iris_fmts_enc;
+		*size = data->inst_iris_fmts_enc_size;
+	} else {
+		*fmt = iris_venc_formats_cap;
+		*size = ARRAY_SIZE(iris_venc_formats_cap);
+	}
+}
+
 static bool check_format(struct iris_inst *inst, u32 pixfmt, u32 type)
 {
 	unsigned int size, i;
@@ -100,8 +113,7 @@ static bool check_format(struct iris_inst *inst, u32 pixfmt, u32 type)
 		size = ARRAY_SIZE(iris_venc_formats_out);
 		break;
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-		fmt = iris_venc_formats_cap;
-		size = ARRAY_SIZE(iris_venc_formats_cap);
+		iris_venc_cap_formats(inst, &fmt, &size);
 		break;
 	default:
 		return false;
@@ -117,7 +129,7 @@ static bool check_format(struct iris_inst *inst, u32 pixfmt, u32 type)
 
 static u32 find_format_by_index(struct iris_inst *inst, u32 index, u32 type)
 {
-	unsigned int size;
+	unsigned int size, i;
 	const u32 *fmt;
 
 	switch (type) {
@@ -126,17 +138,20 @@ static u32 find_format_by_index(struct iris_inst *inst, u32 index, u32 type)
 		size = ARRAY_SIZE(iris_venc_formats_out);
 		break;
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-		fmt = iris_venc_formats_cap;
-		size = ARRAY_SIZE(iris_venc_formats_cap);
+		iris_venc_cap_formats(inst, &fmt, &size);
 		break;
 	default:
 		return 0;
 	}
 
-	if (index >= size)
-		return 0;
+	for (i = 0; i < size; i++) {
+		if (!fmt[i])
+			continue;
+		if (!index--)
+			return fmt[i];
+	}
 
-	return fmt[index];
+	return 0;
 }
 
 int iris_venc_enum_fmt(struct iris_inst *inst, struct v4l2_fmtdesc *f)
