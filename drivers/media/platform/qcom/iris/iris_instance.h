@@ -22,6 +22,9 @@ enum iris_fmt_type_out {
 	IRIS_FMT_HEVC,
 	IRIS_FMT_VP9,
 	IRIS_FMT_AV1,
+	IRIS_FMT_VP8,
+	IRIS_FMT_MPEG2,
+	IRIS_FMT_MPEG1,
 };
 
 enum iris_fmt_type_cap {

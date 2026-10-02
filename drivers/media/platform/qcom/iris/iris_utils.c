@@ -40,6 +40,11 @@ bool iris_split_mode_enabled(struct iris_inst *inst)
 		inst->fmt_dst->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_QC10C;
 }
 
+bool iris_codec_is_mpeg(u32 codec)
+{
+	return codec == V4L2_PIX_FMT_MPEG2 || codec == V4L2_PIX_FMT_MPEG1;
+}
+
 bool iris_fmt_is_8bit(u32 pixelformat)
 {
 	return pixelformat == V4L2_PIX_FMT_NV12 ||

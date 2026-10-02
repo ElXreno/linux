@@ -181,7 +181,9 @@ static void iris_hfi_gen1_read_changed_params(struct iris_inst *inst,
 	dst_q = v4l2_m2m_get_dst_vq(inst->m2m_ctx);
 	dst_q->min_reqbufs_allocation = inst->buffers[BUF_OUTPUT].min_count;
 
-	if ((event.bit_depth != HFI_BITDEPTH_8 && !ten_bit) || !event.pic_struct) {
+	if ((event.bit_depth != HFI_BITDEPTH_8 && !ten_bit) ||
+	    (!event.pic_struct && inst->codec != V4L2_PIX_FMT_MPEG2 &&
+	     inst->codec != V4L2_PIX_FMT_MPEG1)) {
 		dev_err(core->dev, "unsupported content, bit depth: %x, pic_struct = %x\n",
 			event.bit_depth, event.pic_struct);
 		iris_inst_change_state(inst, IRIS_INST_ERROR);
