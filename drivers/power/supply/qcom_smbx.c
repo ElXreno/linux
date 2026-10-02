@@ -561,7 +561,9 @@ static void smb_status_change_work(struct work_struct *work)
 static int smb_get_iio_chan(struct smb_chip *chip, struct iio_channel *chan,
 			     int *val)
 {
-	if (!smb_is_charging(chip)) {
+	int online;
+
+	if (smb_get_prop_usb_online(chip, &online) || !online) {
 		*val = 0;
 		return 0;
 	}
