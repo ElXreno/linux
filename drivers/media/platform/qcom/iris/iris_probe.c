@@ -207,6 +207,9 @@ static void iris_remove(struct platform_device *pdev)
 
 	v4l2_device_unregister(&core->v4l2_dev);
 
+	iris_put_secure_nonpixel_dev(core);
+
+	mutex_destroy(&core->secure_lock);
 	mutex_destroy(&core->lock);
 }
 
@@ -233,6 +236,7 @@ static int iris_probe(struct platform_device *pdev)
 
 	core->state = IRIS_CORE_DEINIT;
 	mutex_init(&core->lock);
+	mutex_init(&core->secure_lock);
 	init_completion(&core->core_init_done);
 
 	core->response_packet = devm_kzalloc(core->dev, IFACEQ_CORE_PKT_SIZE, GFP_KERNEL);
