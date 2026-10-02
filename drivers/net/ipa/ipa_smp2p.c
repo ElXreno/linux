@@ -124,9 +124,6 @@ static int ipa_smp2p_panic_notifier(struct notifier_block *nb,
 
 	ipa_smp2p_notify(smp2p);
 
-	if (smp2p->power_on)
-		ipa_uc_panic_notifier(smp2p->ipa);
-
 	return NOTIFY_DONE;
 }
 
