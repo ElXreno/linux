@@ -83,6 +83,8 @@
 #define QG_SHUTDOWN_SOC_MAX_OFF_S	360
 #define QG_SHUTDOWN_SOC_MAX_DELTA	10
 #define QG_POLL_INTERVAL_MS		30000
+#define QG_SETTLE_POLL_MS		1000
+#define QG_SETTLE_MS			10000
 #define QG_DISCHARGE_THRESHOLD_UA	50000
 #define QG_RELAX_CURRENT_UA		50000
 #define QG_RELAX_TIME_NS		(30ULL * 60 * NSEC_PER_SEC)
@@ -102,6 +104,7 @@ struct qcom_qg_chip {
 
 	struct mutex lock;
 	struct delayed_work poll_work;
+	unsigned long settle_until;
 	bool initialized;
 	unsigned int i_lsb_na;
 	s64 charge_uaus;
@@ -455,7 +458,9 @@ static void qcom_qg_poll_work(struct work_struct *work)
 	qcom_qg_update(chip);
 	mutex_unlock(&chip->lock);
 
-	schedule_delayed_work(&chip->poll_work, msecs_to_jiffies(QG_POLL_INTERVAL_MS));
+	schedule_delayed_work(&chip->poll_work,
+			      msecs_to_jiffies(time_before(jiffies, READ_ONCE(chip->settle_until)) ?
+					       QG_SETTLE_POLL_MS : QG_POLL_INTERVAL_MS));
 }
 
 static irqreturn_t qcom_qg_fifo_done_irq(int irq, void *data)
@@ -716,6 +721,7 @@ static void qcom_qg_external_power_changed(struct power_supply *psy)
 {
 	struct qcom_qg_chip *chip = power_supply_get_drvdata(psy);
 
+	WRITE_ONCE(chip->settle_until, jiffies + msecs_to_jiffies(QG_SETTLE_MS));
 	mod_delayed_work(system_wq, &chip->poll_work, 0);
 }
 
@@ -744,6 +750,7 @@ static int qcom_qg_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	chip->settle_until = jiffies;
 	ret = devm_delayed_work_autocancel(chip->dev, &chip->poll_work, qcom_qg_poll_work);
 	if (ret)
 		return ret;
