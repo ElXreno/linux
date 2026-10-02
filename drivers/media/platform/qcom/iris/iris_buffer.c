@@ -1069,7 +1069,8 @@ int iris_vb2_buffer_done(struct iris_inst *inst, struct iris_buffer *buf)
 	}
 
 	if (V4L2_TYPE_IS_CAPTURE(type)) {
-		vb2_set_plane_payload(vb2, 0, buf->data_size);
+		vb2->planes[0].data_offset = buf->data_offset;
+		vb2_set_plane_payload(vb2, 0, buf->data_size + buf->data_offset);
 		vbuf->sequence = inst->sequence_cap++;
 		iris_get_ts_metadata(inst, buf->timestamp, vbuf);
 	} else {
