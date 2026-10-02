@@ -1228,7 +1228,6 @@ int q6afe_set_lpass_clock(struct device *dev, int clk_id, int attri,
 	cset.clk_root = clk_root;
 	cset.enable = !!freq;
 
-	printk(KERN_INFO "%s: clk_id=%d, attri=%d, clk_root=%d, freq=%d\n", __func__, clk_id, attri, clk_root, freq);
 	int ret = q6afe_set_param(afe, NULL, &cset, AFE_PARAM_ID_CLOCK_SET,
 			       AFE_MODULE_CLOCK_SET, sizeof(cset),
 			       AFE_CLK_TOKEN);
@@ -1547,7 +1546,6 @@ int q6afe_i2s_port_prepare(struct q6afe_port *port, struct q6afe_i2s_cfg *cfg)
 
 	// FINDME this is pretty close to downstream msm_dai_q6_mi2s_get_lineconfig
 	num_sd_lines = hweight_long(cfg->sd_line_mask);
-	printk(KERN_ERR "%s:%d num_sd_lines=0x%x cfg->sd_line_mask=0x%x\n", __func__, __LINE__, num_sd_lines, cfg->sd_line_mask);
 
 	switch (num_sd_lines) {
 	case 0:
@@ -1656,7 +1654,6 @@ int q6afe_i2s_port_prepare(struct q6afe_port *port, struct q6afe_i2s_cfg *cfg)
 		break;
 	}
 
-	printk(KERN_ERR "%s:%d DBG num_sd_lines=0x%x mono_stereo=0x%x channel_mode=0x%x\n", __func__, __LINE__, num_sd_lines, pcfg->i2s_cfg.mono_stereo, pcfg->i2s_cfg.channel_mode);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(q6afe_i2s_port_prepare);
@@ -1951,8 +1948,6 @@ static int q6afe_probe(struct apr_device *adev)
 	struct q6afe *afe;
 	struct device *dev = &adev->dev;
 
-	printk(KERN_ERR "%s:%d DBG\n", __func__, __LINE__);
-
 	afe = devm_kzalloc(dev, sizeof(*afe), GFP_KERNEL);
 	if (!afe)
 		return -ENOMEM;
@@ -1967,7 +1962,6 @@ static int q6afe_probe(struct apr_device *adev)
 
 	dev_set_drvdata(dev, afe);
 
-	printk(KERN_ERR "%s:%d DBG\n", __func__, __LINE__);
 	return devm_of_platform_populate(dev);
 }
 
