@@ -899,11 +899,16 @@ static int iris_destroy_internal_buffers(struct iris_inst *inst, u32 plane, bool
 	}
 
 	if (force) {
-		if (inst->domain == DECODER)
-			buffers = &inst->buffers[BUF_PERSIST];
-		else
+		if (inst->domain == ENCODER) {
 			buffers = &inst->buffers[BUF_ARP];
+			list_for_each_entry_safe(buf, next, &buffers->list, list) {
+				ret = iris_destroy_internal_buffer(inst, buf);
+				if (ret)
+					return ret;
+			}
+		}
 
+		buffers = &inst->buffers[BUF_PERSIST];
 		list_for_each_entry_safe(buf, next, &buffers->list, list) {
 			ret = iris_destroy_internal_buffer(inst, buf);
 			if (ret)

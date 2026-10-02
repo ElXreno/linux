@@ -84,7 +84,6 @@ const struct iris_platform_data sm7150_data = {
 	.tz_cp_config_data_size = ARRAY_SIZE(tz_cp_config_vpu1),
 	.num_vpp_pipe = 2,
 	.no_aon = true,
-	.no_encoder = true,
 	.hfi_4xx = true,
 	.max_session_count = 16,
 	.max_core_mbpf = (4096 * 2304) / 256 * 2,

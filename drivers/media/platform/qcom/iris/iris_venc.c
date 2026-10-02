@@ -463,15 +463,28 @@ int iris_venc_g_param(struct iris_inst *inst, struct v4l2_streamparm *s_parm)
 
 int iris_venc_streamon_input(struct iris_inst *inst)
 {
+	const struct iris_hfi_session_ops *hfi_ops = inst->hfi_session_ops;
 	int ret;
 
 	ret = iris_set_properties(inst, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
 	if (ret)
 		return ret;
 
+	if (inst->core->iris_platform_data->hfi_4xx && hfi_ops->session_get_buf_req) {
+		ret = hfi_ops->session_get_buf_req(inst);
+		if (ret)
+			return ret;
+	}
+
 	ret = iris_alloc_and_queue_persist_bufs(inst, BUF_ARP);
 	if (ret)
 		return ret;
+
+	if (inst->core->iris_platform_data->hfi_4xx && inst->fw_buf_size[BUF_PERSIST]) {
+		ret = iris_alloc_and_queue_persist_bufs(inst, BUF_PERSIST);
+		if (ret)
+			return ret;
+	}
 
 	iris_get_internal_buffers(inst, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
 
