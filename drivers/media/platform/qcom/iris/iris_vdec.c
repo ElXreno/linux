@@ -110,7 +110,7 @@ static bool check_format(struct iris_inst *inst, u32 pixfmt, u32 type)
 
 static u32 find_format_by_index(struct iris_inst *inst, u32 index, u32 type)
 {
-	unsigned int size;
+	unsigned int size, i;
 	const u32 *fmt;
 
 	switch (type) {
@@ -126,10 +126,14 @@ static u32 find_format_by_index(struct iris_inst *inst, u32 index, u32 type)
 		return 0;
 	}
 
-	if (index >= size)
-		return 0;
+	for (i = 0; i < size; i++) {
+		if (!fmt[i])
+			continue;
+		if (!index--)
+			return fmt[i];
+	}
 
-	return fmt[index];
+	return 0;
 }
 
 int iris_vdec_enum_fmt(struct iris_inst *inst, struct v4l2_fmtdesc *f)
