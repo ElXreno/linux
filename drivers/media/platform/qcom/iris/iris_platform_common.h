@@ -55,6 +55,7 @@ extern const struct iris_firmware_data iris_hfi_gen2_data;
 
 extern const struct iris_platform_data qcs8300_data;
 extern const struct iris_platform_data sc7280_data;
+extern const struct iris_platform_data sm7150_data;
 extern const struct iris_platform_data sm8250_data;
 extern const struct iris_platform_data sm8550_data;
 extern const struct iris_platform_data sm8650_data;
@@ -74,6 +75,8 @@ enum platform_clk_type {
 	IRIS_VPP0_HW_CLK,
 	IRIS_VPP1_HW_CLK,
 	IRIS_APV_HW_CLK,
+	IRIS_CVP_HW_CLK,
+	IRIS_CVP_HW_AHB_CLK,
 };
 
 struct platform_clk_data {
