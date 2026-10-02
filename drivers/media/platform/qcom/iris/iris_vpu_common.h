@@ -22,6 +22,13 @@ struct vpu_ops {
 	void (*program_bootup_registers)(struct iris_core *core);
 	u64 (*calc_freq)(struct iris_inst *inst, size_t data_size);
 	int (*set_hwmode)(struct iris_core *core);
+	void (*set_preset_registers)(struct iris_core *core);
+	void (*interrupt_init)(struct iris_core *core);
+	int (*boot_firmware)(struct iris_core *core);
+	void (*raise_interrupt)(struct iris_core *core);
+	void (*clear_interrupt)(struct iris_core *core);
+	int (*watchdog)(struct iris_core *core, u32 intr_status);
+	int (*prepare_pc)(struct iris_core *core);
 };
 
 int iris_vpu_boot_firmware(struct iris_core *core);
