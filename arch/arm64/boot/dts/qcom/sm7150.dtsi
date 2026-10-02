@@ -13,6 +13,7 @@
 #include <dt-bindings/clock/qcom,sm7150-gcc.h>
 #include <dt-bindings/clock/qcom,sm7150-videocc.h>
 #include <dt-bindings/dma/qcom-gpi.h>
+#include <dt-bindings/firmware/qcom,scm.h>
 #include <dt-bindings/interconnect/qcom,icc.h>
 #include <dt-bindings/interconnect/qcom,osm-l3.h>
 #include <dt-bindings/interconnect/qcom,sm7150-rpmh.h>
@@ -820,6 +821,17 @@
 		dfps_data_mem: dfps-data@9e300000 {
 			reg = <0x0 0x9d700000 0x0 0x0100000>;
 			no-map;
+		};
+
+		venus_secure_cma: venus-secure-cma {
+			compatible = "shared-dma-pool";
+			size = <0x0 0x2000000>;
+			alignment = <0x0 0x400000>;
+			reusable;
+		};
+
+		venus_secure_nonpixel_iova: venus-secure-nonpixel-iova {
+			iommu-addresses = <&venus_secure_nonpixel 0x0 0x0 0x0 0x1000000>;
 		};
 	};
 
@@ -3571,7 +3583,19 @@
 
 			iommus = <&apps_smmu 0x1080 0x60>;
 
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
 			status = "disabled";
+
+			venus_secure_nonpixel: secure-non-pixel {
+				compatible = "qcom,venus-secure-context";
+				iommus = <&apps_smmu 0x1084 0x60>;
+				qcom,secure-vmid = <QCOM_SCM_VMID_CP_NON_PIXEL>;
+				memory-region = <&venus_secure_cma>,
+						<&venus_secure_nonpixel_iova>;
+			};
 
 			video-decoder {
 				compatible = "venus-decoder";
