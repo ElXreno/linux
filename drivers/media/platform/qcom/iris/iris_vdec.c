@@ -279,6 +279,12 @@ int iris_vdec_s_fmt(struct iris_inst *inst, struct v4l2_format *f)
 		fmt->fmt.pix_mp.num_planes = 1;
 		switch (f->fmt.pix_mp.pixelformat) {
 		case V4L2_PIX_FMT_P010:
+			if (inst->core->iris_platform_data->hfi_4xx) {
+				iris_vdec_p010_layout(inst->fmt_src->fmt.pix_mp.width,
+						      inst->fmt_src->fmt.pix_mp.height,
+						      &fmt->fmt.pix_mp);
+				break;
+			}
 			fmt->fmt.pix_mp.width = ALIGN(f->fmt.pix_mp.width, 128);
 			fmt->fmt.pix_mp.height = ALIGN(f->fmt.pix_mp.height, 32);
 			fmt->fmt.pix_mp.plane_fmt[0].bytesperline =
@@ -313,6 +319,13 @@ int iris_vdec_s_fmt(struct iris_inst *inst, struct v4l2_format *f)
 	memcpy(f, fmt, sizeof(*fmt));
 
 	return 0;
+}
+
+void iris_vdec_p010_layout(u32 width, u32 height, struct v4l2_pix_format_mplane *pixmp)
+{
+	pixmp->width = ALIGN(width, 64);
+	pixmp->height = ALIGN(height, 32);
+	pixmp->plane_fmt[0].bytesperline = ALIGN(width * 2, 128);
 }
 
 int iris_vdec_validate_format(struct iris_inst *inst, u32 pixelformat)

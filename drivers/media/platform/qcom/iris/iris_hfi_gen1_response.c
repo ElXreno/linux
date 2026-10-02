@@ -35,6 +35,7 @@ static void iris_hfi_gen1_read_changed_params(struct iris_inst *inst,
 	struct vb2_queue *dst_q;
 	struct v4l2_ctrl *ctrl;
 	u32 full_range, ptype;
+	bool ten_bit;
 
 	do {
 		ptype = *((u32 *)data_ptr);
@@ -104,12 +105,38 @@ static void iris_hfi_gen1_read_changed_params(struct iris_inst *inst,
 		num_properties_changed--;
 	} while (num_properties_changed > 0);
 
+	ten_bit = core->iris_platform_data->hfi_4xx && event.bit_depth == HFI_BITDEPTH_10;
+	if (ten_bit) {
+		inst->fw_caps[BIT_DEPTH].value = BIT_DEPTH_10;
+		pixmp_op->pixelformat = V4L2_PIX_FMT_P010;
+	} else if (event.bit_depth == HFI_BITDEPTH_8) {
+		inst->fw_caps[BIT_DEPTH].value = BIT_DEPTH_8;
+		if (pixmp_op->pixelformat == V4L2_PIX_FMT_P010)
+			pixmp_op->pixelformat = V4L2_PIX_FMT_NV12;
+	}
+
 	pixmp_ip->width = event.width;
 	pixmp_ip->height = event.height;
 
-	pixmp_op->width = ALIGN(event.width, 128);
-	pixmp_op->height = ALIGN(event.height, 32);
-	pixmp_op->plane_fmt[0].bytesperline = ALIGN(event.width, 128);
+	if (event.input_crop.width > 0 && event.input_crop.height > 0) {
+		inst->crop.left = event.input_crop.left;
+		inst->crop.top = event.input_crop.top;
+		inst->crop.width = event.input_crop.width;
+		inst->crop.height = event.input_crop.height;
+	} else {
+		inst->crop.left = 0;
+		inst->crop.top = 0;
+		inst->crop.width = event.width;
+		inst->crop.height = event.height;
+	}
+
+	if (ten_bit) {
+		iris_vdec_p010_layout(event.width, event.height, pixmp_op);
+	} else {
+		pixmp_op->width = ALIGN(event.width, 128);
+		pixmp_op->height = ALIGN(event.height, 32);
+		pixmp_op->plane_fmt[0].bytesperline = ALIGN(event.width, 128);
+	}
 	pixmp_op->plane_fmt[0].sizeimage = iris_get_buffer_size(inst, BUF_OUTPUT);
 
 	matrix_coeff =  FIELD_GET(GENMASK(7, 0), event.colour_space);
@@ -144,18 +171,6 @@ static void iris_hfi_gen1_read_changed_params(struct iris_inst *inst,
 	pixmp_ip->ycbcr_enc = pixmp_op->ycbcr_enc;
 	pixmp_ip->quantization = pixmp_op->quantization;
 
-	if (event.input_crop.width > 0 && event.input_crop.height > 0) {
-		inst->crop.left = event.input_crop.left;
-		inst->crop.top = event.input_crop.top;
-		inst->crop.width = event.input_crop.width;
-		inst->crop.height = event.input_crop.height;
-	} else {
-		inst->crop.left = 0;
-		inst->crop.top = 0;
-		inst->crop.width = event.width;
-		inst->crop.height = event.height;
-	}
-
 	inst->fw_min_count = event.buf_count;
 	inst->buffers[BUF_OUTPUT].min_count = iris_vpu_buf_count(inst, BUF_OUTPUT);
 	inst->buffers[BUF_OUTPUT].size = pixmp_op->plane_fmt[0].sizeimage;
@@ -166,7 +181,7 @@ static void iris_hfi_gen1_read_changed_params(struct iris_inst *inst,
 	dst_q = v4l2_m2m_get_dst_vq(inst->m2m_ctx);
 	dst_q->min_reqbufs_allocation = inst->buffers[BUF_OUTPUT].min_count;
 
-	if (event.bit_depth || !event.pic_struct) {
+	if ((event.bit_depth != HFI_BITDEPTH_8 && !ten_bit) || !event.pic_struct) {
 		dev_err(core->dev, "unsupported content, bit depth: %x, pic_struct = %x\n",
 			event.bit_depth, event.pic_struct);
 		iris_inst_change_state(inst, IRIS_INST_ERROR);
