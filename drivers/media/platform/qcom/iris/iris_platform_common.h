@@ -316,6 +316,8 @@ struct iris_platform_data {
 	u64 dma_mask;
 	const u32 *inst_iris_fmts;
 	u32 inst_iris_fmts_size;
+	const u32 *inst_iris_fmts_enc;
+	u32 inst_iris_fmts_enc_size;
 	struct platform_inst_caps *inst_caps;
 	const struct tz_cp_config *tz_cp_config_data;
 	u32 tz_cp_config_data_size;

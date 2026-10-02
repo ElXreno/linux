@@ -34,6 +34,12 @@ static const u32 iris_fmts_vpu1_dec[] = {
 	[IRIS_FMT_MPEG1] = V4L2_PIX_FMT_MPEG1,
 };
 
+static const u32 iris_fmts_vpu1_enc[] = {
+	[IRIS_FMT_H264] = V4L2_PIX_FMT_H264,
+	[IRIS_FMT_HEVC] = V4L2_PIX_FMT_HEVC,
+	[IRIS_FMT_VP8] = V4L2_PIX_FMT_VP8,
+};
+
 static struct platform_inst_caps platform_inst_cap_vpu1 = {
 	.min_frame_width = 96,
 	.max_frame_width = 4096,
@@ -79,6 +85,8 @@ const struct iris_platform_data sm7150_data = {
 	.dma_mask = 0xe0000000 - 1,
 	.inst_iris_fmts = iris_fmts_vpu1_dec,
 	.inst_iris_fmts_size = ARRAY_SIZE(iris_fmts_vpu1_dec),
+	.inst_iris_fmts_enc = iris_fmts_vpu1_enc,
+	.inst_iris_fmts_enc_size = ARRAY_SIZE(iris_fmts_vpu1_enc),
 	.inst_caps = &platform_inst_cap_vpu1,
 	.tz_cp_config_data = tz_cp_config_vpu1,
 	.tz_cp_config_data_size = ARRAY_SIZE(tz_cp_config_vpu1),

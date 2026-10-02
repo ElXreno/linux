@@ -524,6 +524,8 @@ int iris_set_stage(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id
 		if (iris_res_is_less_than(width, height, 1280, 720) ||
 		    iris_codec_is_mpeg(inst->codec))
 			work_mode = STAGE_1;
+	} else if (inst->codec == V4L2_PIX_FMT_VP8) {
+		work_mode = STAGE_1;
 	}
 
 	return hfi_ops->session_set_property(inst, hfi_id,
@@ -591,7 +593,11 @@ int iris_set_level(struct iris_inst *inst, enum platform_inst_fw_cap_type cap_id
 
 static void iris_hfi_4xx_profile_level(u32 codec, struct hfi_profile_level *pl)
 {
-	if (codec == V4L2_PIX_FMT_HEVC) {
+	if (codec == V4L2_PIX_FMT_VP8) {
+		pl->profile = 0x1;
+		pl->level = 0x1;
+		return;
+	} else if (codec == V4L2_PIX_FMT_HEVC) {
 		pl->profile = pl->profile == V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10 ? 0x2 : 0x1;
 	} else {
 		switch (pl->profile) {
