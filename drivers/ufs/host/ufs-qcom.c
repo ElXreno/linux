@@ -2497,14 +2497,19 @@ static unsigned long ufs_qcom_opp_freq_to_clk_freq(struct ufs_hba *hba,
 
 static u32 ufs_qcom_freq_to_gear_speed(struct ufs_hba *hba, unsigned long freq)
 {
+	struct ufs_qcom_host *host = ufshcd_get_variant(hba);
 	u32 gear = UFS_HS_DONT_CHANGE;
-	unsigned long unipro_freq;
+	unsigned long clk_freq;
 
 	if (!hba->use_pm_opp)
 		return gear;
 
-	unipro_freq = ufs_qcom_opp_freq_to_clk_freq(hba, freq, "core_clk_unipro");
-	switch (unipro_freq) {
+	if (host->hw_ver.major < 0x4)
+		clk_freq = freq;
+	else
+		clk_freq = ufs_qcom_opp_freq_to_clk_freq(hba, freq, "core_clk_unipro");
+
+	switch (clk_freq) {
 	case 403000000:
 		gear = UFS_HS_G5;
 		break;
