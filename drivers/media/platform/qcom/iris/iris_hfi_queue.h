@@ -171,6 +171,7 @@ struct iris_iface_q_info {
 	void		*kernel_vaddr;
 };
 
+u32 iris_hfi_queue_uc_region_size(void);
 int iris_hfi_queues_init(struct iris_core *core);
 void iris_hfi_queues_deinit(struct iris_core *core);
 
