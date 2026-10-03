@@ -212,7 +212,33 @@
 	status = "okay";
 
 	/* qcom,fsa4480 (usb switcher) @ 42 */
-	/* awinic,aw8624 (haptic) @ 5a */
+
+	haptics@5a {
+		compatible = "awinic,aw8624";
+		reg = <0x5a>;
+		interrupts-extended = <&pm6150l_gpios 10 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 4 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-0 = <&haptics_int_default &haptics_reset_default>;
+		pinctrl-names = "default";
+
+		awinic,f0-preset = <2050>;
+		awinic,f0-coefficient = <260>;
+		awinic,f0-calibration-percent = <7>;
+		awinic,drive-level = <106>;
+
+		awinic,f0-detection-play-time = <9>;
+		awinic,f0-detection-wait-time = <5>;
+		awinic,f0-detection-repeat = <1>;
+		awinic,f0-detection-trace = <15>;
+
+		awinic,tset = /bits/ 8 <0x11>;
+		awinic,r-spare = /bits/ 8 <0x68>;
+
+		awinic,bemf-upper-threshold = <0x8>;
+		awinic,bemf-lower-threshold = <0x3f8>;
+	};
+
 	/* ti,bq25968 (charger) @ 66 */
 };
 
@@ -234,6 +260,16 @@
 
 &nxp {
 	enable-gpios = <&tlmm 100 GPIO_ACTIVE_HIGH>;
+};
+
+&pm6150l_gpios {
+	haptics_int_default: haptics-int-default-state {
+		pins = "gpio10";
+		function = PMIC_GPIO_FUNC_NORMAL;
+		input-enable;
+		bias-pull-up = <PMIC_GPIO_PULL_UP_31P5>;
+		power-source = <1>;
+	};
 };
 
 &pm6150_typec {
@@ -290,6 +326,15 @@
 	status = "okay";
 
 	/* ir-spi @ 0 */
+};
+
+&tlmm {
+	haptics_reset_default: haptics-reset-default-state {
+		pins = "gpio4";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
 };
 
 &uart8 {
