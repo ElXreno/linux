@@ -81,6 +81,14 @@ patternProperties:
         $ref: /schemas/types.yaml#/definitions/string
         maxItems: 1
 
+      playback-only:
+        description: The dai link carries playback streams only.
+        type: boolean
+
+      capture-only:
+        description: The dai link carries capture streams only.
+        type: boolean
+
       cpu:
         description: Holds subnode which indicates cpu dai.
         type: object
