@@ -89,6 +89,37 @@
 			qcom,vmid = <QCOM_SCM_VMID_MSS_MSA>;
 		};
 	};
+
+	sound {
+		compatible = "qcom,sm8250-sndcard";
+		model = "Xiaomi Mi 11 Lite 4G";
+		pinctrl-0 = <&pri_mi2s_active &pri_mi2s_ws_active>;
+		pinctrl-names = "default";
+
+		mm1-dai-link {
+			link-name = "MultiMedia1";
+
+			cpu {
+				sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
+			};
+		};
+
+		speaker-dai-link {
+			link-name = "Speaker Playback";
+
+			cpu {
+				sound-dai = <&q6afedai PRIMARY_MI2S_RX>;
+			};
+
+			platform {
+				sound-dai = <&q6routing>;
+			};
+
+			codec {
+				sound-dai = <&speaker_top>, <&speaker_bottom>;
+			};
+		};
+	};
 };
 
 &battery {
@@ -201,8 +232,30 @@
 
 	/* qcom,pm8008 (pmic) @ 8 */
 	/* qcom,pm8008 (pmic) @ 9 */
-	/* tfa,tfa98xx (speaker amplifier) @ 34 */
-	/* tfa,tfa98xx (speaker amplifier) @ 35 */
+
+	speaker_top: audio-codec@34 {
+		compatible = "nxp,tfa9873";
+		reg = <0x34>;
+
+		pinctrl-0 = <&spk_amp_reset_default &spk_amp_top_int_default &spk_sw_default>;
+		pinctrl-names = "default";
+
+		sound-name-prefix = "Top";
+		#sound-dai-cells = <0>;
+	};
+
+	speaker_bottom: audio-codec@35 {
+		compatible = "nxp,tfa9873";
+		reg = <0x35>;
+		nxp,tdm-speaker-slot = <1>;
+
+		pinctrl-0 = <&spk_amp_bottom_int_default>;
+		pinctrl-names = "default";
+
+		sound-name-prefix = "Bottom";
+		#sound-dai-cells = <0>;
+	};
+
 	/* st,fts (ts) @ 49 */
 	/* goodix,gt9886 (ts) @ 5d */
 };
@@ -283,6 +336,19 @@
 	};
 };
 
+&q6afedai {
+	dai@16 {
+		reg = <PRIMARY_MI2S_RX>;
+		qcom,sd-lines = <0>;
+	};
+};
+
+&q6asmdai {
+	dai@0 {
+		reg = <MSM_FRONTEND_DAI_MULTIMEDIA1>;
+	};
+};
+
 &remoteproc_adsp {
 	firmware-name = "qcom/sm7150/xiaomi/courbet/adsp.mbn";
 };
@@ -334,6 +400,36 @@
 		function = "gpio";
 		drive-strength = <2>;
 		bias-disable;
+	};
+
+	spk_amp_bottom_int_default: spk-amp-bottom-int-default-state {
+		pins = "gpio11";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
+	spk_amp_reset_default: spk-amp-reset-default-state {
+		pins = "gpio66";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+		output-low;
+	};
+
+	spk_amp_top_int_default: spk-amp-top-int-default-state {
+		pins = "gpio90";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
+
+	spk_sw_default: spk-sw-default-state {
+		pins = "gpio110";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+		output-low;
 	};
 };
 
