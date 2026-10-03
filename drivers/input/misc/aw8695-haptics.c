@@ -12,6 +12,7 @@
 #include <linux/i2c.h>
 #include <linux/input.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
@@ -496,11 +497,16 @@ enum aw8695_work_mode {
 	AW8695_CONT_MODE,
 };
 
+struct aw8695_variant {
+	bool has_boost;
+};
+
 struct aw8695_data {
 	struct input_dev *input_dev;
 	struct i2c_client *client;
 	struct regmap *regmap;
 	struct gpio_desc *reset_gpio;
+	const struct aw8695_variant *variant;
 	bool running;
 	struct work_struct play_work;
 	/* Parameters from devicetree */
@@ -1041,10 +1047,12 @@ static int aw8695_init(struct aw8695_data *haptics)
 	}
 
 	/* Configure interrupts */
-	err = regmap_update_bits(haptics->regmap, AW8695_SYSINTM,
-		AW8695_SYSINTM_BSTERR_OFF, AW8695_SYSINTM_BSTERR_OFF);
-	if (err)
-		return err;
+	if (haptics->variant->has_boost) {
+		err = regmap_update_bits(haptics->regmap, AW8695_SYSINTM,
+			AW8695_SYSINTM_BSTERR_OFF, AW8695_SYSINTM_BSTERR_OFF);
+		if (err)
+			return err;
+	}
 	err = regmap_update_bits(haptics->regmap, AW8695_SYSINTM,
 		AW8695_SYSINTM_OV_OFF, 0);
 	if (err)
@@ -1071,15 +1079,17 @@ static int aw8695_init(struct aw8695_data *haptics)
 	if (err)
 		return err;
 
-	err = regmap_write(haptics->regmap, AW8695_BSTDBG1, haptics->boost_debug[0]);
-	if (err)
-		return err;
-	err = regmap_write(haptics->regmap, AW8695_BSTDBG2, haptics->boost_debug[1]);
-	if (err)
-		return err;
-	err = regmap_write(haptics->regmap, AW8695_BSTDBG3, haptics->boost_debug[2]);
-	if (err)
-		return err;
+	if (haptics->variant->has_boost) {
+		err = regmap_write(haptics->regmap, AW8695_BSTDBG1, haptics->boost_debug[0]);
+		if (err)
+			return err;
+		err = regmap_write(haptics->regmap, AW8695_BSTDBG2, haptics->boost_debug[1]);
+		if (err)
+			return err;
+		err = regmap_write(haptics->regmap, AW8695_BSTDBG3, haptics->boost_debug[2]);
+		if (err)
+			return err;
+	}
 	err = regmap_write(haptics->regmap, AW8695_TSET, haptics->tset);
 	if (err)
 		return err;
@@ -1087,16 +1097,18 @@ static int aw8695_init(struct aw8695_data *haptics)
 	if (err)
 		return err;
 
-	err = regmap_update_bits(haptics->regmap, AW8695_ANADBG,
-		AW8695_ANADBG_IOC_MASK, AW8695_ANADBG_IOC_4P65A);
-	if (err)
-		return err;
+	if (haptics->variant->has_boost) {
+		err = regmap_update_bits(haptics->regmap, AW8695_ANADBG,
+			AW8695_ANADBG_IOC_MASK, AW8695_ANADBG_IOC_4P65A);
+		if (err)
+			return err;
 
-	/* Set boost peak current */
-	err = regmap_update_bits(haptics->regmap, AW8695_BSTCFG,
-		AW8695_BSTCFG_PEAKCUR_MASK, AW8695_BSTCFG_PEAKCUR_2A);
-	if (err)
-		return err;
+		/* Set boost peak current */
+		err = regmap_update_bits(haptics->regmap, AW8695_BSTCFG,
+			AW8695_BSTCFG_PEAKCUR_MASK, AW8695_BSTCFG_PEAKCUR_2A);
+		if (err)
+			return err;
+	}
 
 	/* Adjust motorprotect config */
 	err = regmap_update_bits(haptics->regmap, AW8695_DETCTRL,
@@ -1113,11 +1125,13 @@ static int aw8695_init(struct aw8695_data *haptics)
 		return err;
 
 	/* Adjust auto boost config */
-	err = regmap_update_bits(haptics->regmap, AW8695_BST_AUTO,
-		AW8695_BST_AUTO_BST_AUTOSW_MASK,
-		AW8695_BST_AUTO_BST_MANUAL_BOOST);
-	if (err)
-		return err;
+	if (haptics->variant->has_boost) {
+		err = regmap_update_bits(haptics->regmap, AW8695_BST_AUTO,
+			AW8695_BST_AUTO_BST_AUTOSW_MASK,
+			AW8695_BST_AUTO_BST_MANUAL_BOOST);
+		if (err)
+			return err;
+	}
 
 	err = aw8695_haptic_offset_calibration(haptics);
 	if (err)
@@ -1262,6 +1276,8 @@ static int aw8695_probe(struct i2c_client *client)
 	if (!haptics)
 		return -ENOMEM;
 
+	haptics->variant = of_device_get_match_data(dev);
+
 	err = of_property_read_u32(dev->of_node, "awinic,f0-preset", &haptics->f0_preset);
 	if (err)
 		return dev_err_probe(dev, err, "Failed to read awinic,f0-preset\n");
@@ -1300,10 +1316,13 @@ static int aw8695_probe(struct i2c_client *client)
 	if (err)
 		dev_err_probe(dev, err, "Failed to read awinic,f0-detection-trace\n");
 
-	err = of_property_read_u8_array(dev->of_node, "awinic,boost-debug",
-					haptics->boost_debug, ARRAY_SIZE(haptics->boost_debug));
-	if (err)
-		return dev_err_probe(dev, err, "Failed to read awinic,boost-debug\n");
+	if (haptics->variant->has_boost) {
+		err = of_property_read_u8_array(dev->of_node, "awinic,boost-debug",
+						haptics->boost_debug,
+						ARRAY_SIZE(haptics->boost_debug));
+		if (err)
+			return dev_err_probe(dev, err, "Failed to read awinic,boost-debug\n");
+	}
 
 	err = of_property_read_u8(dev->of_node, "awinic,tset", &haptics->tset);
 	if (err)
@@ -1373,9 +1392,17 @@ static int aw8695_probe(struct i2c_client *client)
 	return 0;
 }
 
+static const struct aw8695_variant aw8624_variant = {
+	.has_boost = false,
+};
+
+static const struct aw8695_variant aw8695_variant = {
+	.has_boost = true,
+};
+
 static const struct of_device_id aw8695_of_id[] = {
-	{ .compatible = "awinic,aw8624", },
-	{ .compatible = "awinic,aw8695", },
+	{ .compatible = "awinic,aw8624", .data = &aw8624_variant },
+	{ .compatible = "awinic,aw8695", .data = &aw8695_variant },
 	{ /* sentinel */ }
 };
 
