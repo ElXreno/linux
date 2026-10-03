@@ -185,6 +185,9 @@ static int lpi_config_get(struct pinctrl_dev *pctldev,
 	int pull;
 	int ret;
 
+	if (!gpiochip_line_is_valid(&state->chip, pin))
+		return -EINVAL;
+
 	ret = lpi_gpio_read(state, pin, LPI_GPIO_CFG_REG, &ctl_reg);
 	if (ret)
 		return ret;
@@ -454,6 +457,9 @@ static void lpi_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	unsigned int i;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
+		if (!gpiochip_line_is_valid(chip, i))
+			continue;
+
 		lpi_gpio_dbg_show_one(s, NULL, chip, i, gpio);
 		seq_puts(s, "\n");
 	}
