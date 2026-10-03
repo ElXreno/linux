@@ -131,6 +131,7 @@
 
 		mm1-dai-link {
 			link-name = "MultiMedia1";
+			playback-only;
 
 			cpu {
 				sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
@@ -139,6 +140,7 @@
 
 		mm2-dai-link {
 			link-name = "MultiMedia2";
+			capture-only;
 
 			cpu {
 				sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA2>;
