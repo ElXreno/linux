@@ -8,6 +8,7 @@
 
 #include <linux/delay.h>
 #include <linux/firmware.h>
+#include <linux/fixp-arith.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
@@ -525,22 +526,11 @@ struct aw8695_data {
 	u32 bemf_vthl;
 };
 
-/*
- * Sine wave representing the magnitude of the drive to be used.
- * Data is encoded in two's complement.
- *   round(84 * sin(x / 16.25))
- */
-static const u8 aw8695_sine_waveform[] = {
-	0x00, 0x05, 0x0a, 0x0f, 0x14, 0x19, 0x1e, 0x23, 0x28, 0x2c, 0x30, 0x35,
-	0x39, 0x3c, 0x40, 0x43, 0x46, 0x49, 0x4b, 0x4d, 0x4f, 0x51, 0x52, 0x53,
-	0x54, 0x54, 0x54, 0x54, 0x53, 0x52, 0x51, 0x4f, 0x4d, 0x4b, 0x49, 0x46,
-	0x43, 0x40, 0x3c, 0x39, 0x35, 0x31, 0x2c, 0x28, 0x23, 0x1f, 0x1a, 0x15,
-	0x10, 0x0b, 0x05, 0x00, 0xfb, 0xf6, 0xf1, 0xec, 0xe7, 0xe2, 0xdd, 0xd9,
-	0xd4, 0xd0, 0xcc, 0xc8, 0xc4, 0xc0, 0xbd, 0xba, 0xb7, 0xb5, 0xb3, 0xb1,
-	0xaf, 0xae, 0xad, 0xac, 0xac, 0xac, 0xac, 0xad, 0xae, 0xaf, 0xb1, 0xb2,
-	0xb5, 0xb7, 0xba, 0xbd, 0xc0, 0xc3, 0xc7, 0xcb, 0xcf, 0xd3, 0xd8, 0xdc,
-	0xe1, 0xe6, 0xeb, 0xf0, 0xf5, 0xfa
-};
+/* One period of a two's complement sine at f0-preset, played at 24 kHz */
+#define AW8695_RAM_SAMPLE_RATE		24000
+#define AW8695_SINE_AMPLITUDE		84
+#define AW8695_SINE_MIN_SAMPLES		16
+#define AW8695_SINE_MAX_SAMPLES		1024
 
 /*
  * Header that gets written to AW8695 SRAM that describes the available
@@ -557,20 +547,6 @@ struct aw8695_sram_waveform_header {
 		__be16 end_address;
 	} __packed waveform_address[1];
 } __packed;
-
-static const struct aw8695_sram_waveform_header sram_waveform_header = {
-	.version = 0x01,
-	.waveform_address = {
-		/* Simple sine wave defined above */
-		{
-			.start_address = cpu_to_be16(AW8695_RAM_BASE_ADDR +
-				sizeof(struct aw8695_sram_waveform_header)),
-			.end_address = cpu_to_be16(AW8695_RAM_BASE_ADDR +
-				sizeof(struct aw8695_sram_waveform_header) +
-				ARRAY_SIZE(aw8695_sine_waveform) - 1),
-		}
-	}
-};
 
 static int aw8695_interrupt_clear(struct aw8695_data *haptics)
 {
@@ -1166,9 +1142,19 @@ static int aw8695_init(struct aw8695_data *haptics)
 
 static int aw8695_ram_init(struct aw8695_data *haptics)
 {
+	struct aw8695_sram_waveform_header header = { .version = 0x01 };
+	unsigned int samples;
 	unsigned char *ptr;
+	s8 sample;
 	int err;
 	int i;
+
+	samples = clamp(DIV_ROUND_CLOSEST(AW8695_RAM_SAMPLE_RATE * 10, haptics->f0_preset),
+			AW8695_SINE_MIN_SAMPLES, AW8695_SINE_MAX_SAMPLES);
+	header.waveform_address[0].start_address =
+		cpu_to_be16(AW8695_RAM_BASE_ADDR + sizeof(header));
+	header.waveform_address[0].end_address =
+		cpu_to_be16(AW8695_RAM_BASE_ADDR + sizeof(header) + samples - 1);
 
 	/* Enable SRAM init */
 	err = regmap_update_bits(haptics->regmap, AW8695_SYSCTRL,
@@ -1187,8 +1173,8 @@ static int aw8695_ram_init(struct aw8695_data *haptics)
 		return err;
 
 	/* Write waveform header */
-	ptr = (unsigned char *) &sram_waveform_header;
-	for (i = 0; i < sizeof(sram_waveform_header); i++) {
+	ptr = (unsigned char *) &header;
+	for (i = 0; i < sizeof(header); i++) {
 		err = regmap_write(haptics->regmap, AW8695_RAMDATA,
 			ptr[i]);
 		if (err)
@@ -1196,9 +1182,10 @@ static int aw8695_ram_init(struct aw8695_data *haptics)
 	}
 
 	/* Write waveform data */
-	for (i = 0; i < ARRAY_SIZE(aw8695_sine_waveform); i++) {
-		err = regmap_write(haptics->regmap, AW8695_RAMDATA,
-			aw8695_sine_waveform[i]);
+	for (i = 0; i < samples; i++) {
+		sample = DIV_S64_ROUND_CLOSEST((s64)fixp_sin32_rad(i, samples) *
+					       AW8695_SINE_AMPLITUDE, S32_MAX);
+		err = regmap_write(haptics->regmap, AW8695_RAMDATA, (u8)sample);
 		if (err)
 			return err;
 	}
