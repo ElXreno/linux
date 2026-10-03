@@ -314,6 +314,9 @@ int qcom_snd_parse_of(struct snd_soc_card *card)
 			link->nonatomic = 1;
 		}
 
+		link->playback_only = of_property_read_bool(np, "playback-only");
+		link->capture_only = of_property_read_bool(np, "capture-only");
+
 		link->stream_name = link->name;
 		link++;
 	}
