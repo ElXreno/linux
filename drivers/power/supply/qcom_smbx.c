@@ -77,6 +77,16 @@ enum smb_generation {
 #define SMB5_CHARGE_RCHG_SOC_THRESHOLD_CFG_REG		0x7D
 #define SMB5_CHARGE_RCHG_SOC_THRESHOLD_CFG_MASK		GENMASK(7, 0)
 
+#define SMB5_RECHG_MASK					GENMASK(2, 1)
+#define SMB5_VBAT_BASED_RECHG_BIT			BIT(2)
+
+#define SMB5_CHARGE_INHIBIT_THRESHOLD_CFG_REG		0x72
+#define SMB5_CHARGE_INHIBIT_THRESHOLD_MASK		GENMASK(1, 0)
+
+#define SMB5_CHGR_ADC_RECHARGE_THRESHOLD_MSB_REG	0x7E
+#define SMB5_VBAT_LSB_NV				194637
+#define SMB5_RECHARGE_MARGIN_UV				50000
+
 #define OTG_CFG						0x153
 #define OTG_EN_SRC_CFG_BIT				BIT(1)
 
@@ -237,6 +247,10 @@ struct smb_init_register {
  * @usb_in_i_chan:	USB_IN current measurement channel
  * @usb_in_v_chan:	USB_IN voltage measurement channel
  * @chg_psy:		Charger power supply instance
+ * @threshold_lock:	Serialises charge control threshold updates
+ * @charge_start_pct:	Capacity below which a full battery is recharged
+ * @charge_end_pct:	Capacity at which charging terminates
+ * @thresholds_ready:	Battery data is available for the thresholds
  */
 struct smb_chip {
 	struct device *dev;
@@ -247,6 +261,11 @@ struct smb_chip {
 	enum smb_generation gen;
 	unsigned int current_step_size_ua;
 	unsigned int current_limit_max_ua;
+
+	struct mutex threshold_lock;
+	int charge_start_pct;
+	int charge_end_pct;
+	bool thresholds_ready;
 
 	struct delayed_work status_change_work;
 	int cable_irq;
@@ -278,6 +297,21 @@ static enum power_supply_property smb_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_USB_TYPE,
 	POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR,
+};
+
+static enum power_supply_property smb5_properties[] = {
+	POWER_SUPPLY_PROP_MANUFACTURER,
+	POWER_SUPPLY_PROP_MODEL_NAME,
+	POWER_SUPPLY_PROP_CURRENT_MAX,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	POWER_SUPPLY_PROP_STATUS,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_USB_TYPE,
+	POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD,
 };
 
 static bool smb_is_charging(struct smb_chip *chip)
@@ -421,7 +455,8 @@ static int smb_get_prop_status(struct smb_chip *chip, int *val)
 		return rc;
 	case TERMINATE_CHARGE:
 	case INHIBIT_CHARGE:
-		*val = POWER_SUPPLY_STATUS_FULL;
+		*val = READ_ONCE(chip->charge_end_pct) < 100 ?
+		       POWER_SUPPLY_STATUS_NOT_CHARGING : POWER_SUPPLY_STATUS_FULL;
 		return rc;
 	default:
 		*val = POWER_SUPPLY_STATUS_UNKNOWN;
@@ -586,7 +621,7 @@ static int smb5_get_prop_health(struct smb_chip *chip, int *val)
 	/* Treat any error as if we are in the overvoltage state */
 	if (rc < 0)
 		dev_err(chip->dev, "Couldn't determine overvoltage status!");
-	if (rc) {
+	if (rc < 0 || (rc && READ_ONCE(chip->charge_end_pct) == 100)) {
 		dev_err(chip->dev, "battery over-voltage");
 		*val = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 		return 0;
@@ -715,6 +750,203 @@ static int smb_set_charge_behaviour(struct smb_chip *chip, int val)
 				  usbin_suspend ? USBIN_SUSPEND_BIT : 0);
 }
 
+static int smb_set_float_voltage(struct smb_chip *chip, int uv)
+{
+	unsigned int raw;
+
+	if (chip->gen == SMB5)
+		raw = (max(uv, 3600000) - 3600000) / 10000;
+	else
+		raw = (max(uv, 3487500) - 3487500) / 7500 + 1;
+
+	return regmap_update_bits(chip->regmap, chip->base + FLOAT_VOLTAGE_CFG,
+				  FLOAT_VOLTAGE_SETTING_MASK, raw);
+}
+
+static int smb_capacity_to_uv(struct smb_chip *chip, int pct)
+{
+	const struct power_supply_battery_ocv_table *table;
+	int len, i;
+
+	table = power_supply_find_ocv2cap_table(chip->batt_info, 25, &len);
+	if (!table || !len)
+		return -EINVAL;
+
+	for (i = 0; i < len && table[i].capacity > pct; i++)
+		;
+
+	if (i == 0)
+		return table[0].ocv;
+	if (i == len)
+		return table[len - 1].ocv;
+
+	return table[i].ocv + (table[i - 1].ocv - table[i].ocv) *
+	       (pct - table[i].capacity) / (table[i - 1].capacity - table[i].capacity);
+}
+
+static int smb_uv_to_capacity(struct smb_chip *chip, int uv)
+{
+	return clamp(power_supply_batinfo_ocv2cap(chip->batt_info, uv, 25), 0, 100);
+}
+
+static const int smb5_inhibit_threshold_uv[] = { 50000, 100000, 200000, 300000 };
+
+static int smb5_write_charge_thresholds(struct smb_chip *chip)
+{
+	int max_uv = chip->batt_info->voltage_max_design_uv;
+	int fv_uv = max_uv, rchg_uv;
+	unsigned int raw, inhibit = 0;
+	u8 rchg[2];
+	int rc, i = 0;
+
+	lockdep_assert_held(&chip->threshold_lock);
+
+	if (chip->charge_end_pct < 100) {
+		fv_uv = smb_capacity_to_uv(chip, chip->charge_end_pct);
+		if (fv_uv < 0)
+			return fv_uv;
+		fv_uv = min(fv_uv, max_uv);
+	}
+
+	rchg_uv = smb_capacity_to_uv(chip, chip->charge_start_pct);
+	if (rchg_uv < 0)
+		return rchg_uv;
+	rchg_uv = min(rchg_uv, fv_uv - SMB5_RECHARGE_MARGIN_UV);
+
+	rc = smb_set_float_voltage(chip, fv_uv);
+	if (rc < 0)
+		return rc;
+
+	raw = div_u64((u64)rchg_uv * 1000, SMB5_VBAT_LSB_NV);
+	rchg[0] = raw >> 8;
+	rchg[1] = raw & 0xff;
+	rc = regmap_bulk_write(chip->regmap,
+			       chip->base + SMB5_CHGR_ADC_RECHARGE_THRESHOLD_MSB_REG,
+			       rchg, sizeof(rchg));
+	if (rc < 0)
+		return rc;
+
+	if (chip->charge_end_pct < 100) {
+		for (i = ARRAY_SIZE(smb5_inhibit_threshold_uv) - 1; i > 0; i--)
+			if (smb5_inhibit_threshold_uv[i] <= fv_uv - rchg_uv)
+				break;
+
+		rc = regmap_update_bits(chip->regmap,
+					chip->base + SMB5_CHARGE_INHIBIT_THRESHOLD_CFG_REG,
+					SMB5_CHARGE_INHIBIT_THRESHOLD_MASK, i);
+		if (rc < 0)
+			return rc;
+
+		inhibit = CHARGER_INHIBIT_BIT;
+	}
+
+	rc = regmap_update_bits(chip->regmap, chip->base + CHGR_CFG2,
+				SMB5_RECHG_MASK | CHARGER_INHIBIT_BIT,
+				SMB5_VBAT_BASED_RECHG_BIT | inhibit);
+	if (rc < 0)
+		return rc;
+
+	dev_dbg(chip->dev, "charge thresholds %d-%d%%: float %d uV, recharge %d uV, inhibit %d uV\n",
+		chip->charge_start_pct, chip->charge_end_pct, fv_uv, rchg_uv,
+		inhibit ? smb5_inhibit_threshold_uv[i] : 0);
+
+	return 0;
+}
+
+static int smb5_apply_charge_thresholds(struct smb_chip *chip)
+{
+	unsigned int cmd, stat;
+	int rc, ret;
+
+	rc = regmap_read(chip->regmap, chip->base + CHARGING_ENABLE_CMD, &cmd);
+	if (rc < 0)
+		return rc;
+
+	if (cmd & CHARGING_ENABLE_CMD_BIT) {
+		rc = regmap_clear_bits(chip->regmap, chip->base + CHARGING_ENABLE_CMD,
+				       CHARGING_ENABLE_CMD_BIT);
+		if (rc < 0)
+			return rc;
+
+		regmap_read_poll_timeout(chip->regmap, chip->base + BATTERY_CHARGER_STATUS_1,
+					 stat, (stat & BATTERY_CHARGER_STATUS_MASK) == DISABLE_CHARGE,
+					 1000, 100000);
+	}
+
+	rc = smb5_write_charge_thresholds(chip);
+
+	if (cmd & CHARGING_ENABLE_CMD_BIT) {
+		ret = regmap_set_bits(chip->regmap, chip->base + CHARGING_ENABLE_CMD,
+				      CHARGING_ENABLE_CMD_BIT);
+		if (!rc)
+			rc = ret;
+	}
+
+	return rc;
+}
+
+static int smb5_set_charge_threshold(struct smb_chip *chip,
+				     enum power_supply_property psp, int pct)
+{
+	int old_start, old_end, rc;
+
+	if (pct < 0 || pct > 100)
+		return -EINVAL;
+
+	guard(mutex)(&chip->threshold_lock);
+
+	if (!chip->thresholds_ready)
+		return -EOPNOTSUPP;
+
+	old_start = chip->charge_start_pct;
+	old_end = chip->charge_end_pct;
+
+	if (psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD)
+		chip->charge_start_pct = pct;
+	else
+		WRITE_ONCE(chip->charge_end_pct, pct);
+
+	rc = smb5_apply_charge_thresholds(chip);
+	if (rc < 0) {
+		chip->charge_start_pct = old_start;
+		WRITE_ONCE(chip->charge_end_pct, old_end);
+		return rc;
+	}
+
+	power_supply_changed(chip->chg_psy);
+
+	return 0;
+}
+
+static int smb5_init_charge_thresholds(struct smb_chip *chip)
+{
+	int len = 0;
+	u8 rchg[2];
+	int rc;
+
+	rc = smb_set_float_voltage(chip, chip->batt_info->voltage_max_design_uv);
+	if (rc < 0)
+		return rc;
+
+	if (!power_supply_find_ocv2cap_table(chip->batt_info, 25, &len) || !len)
+		return 0;
+
+	rc = regmap_bulk_read(chip->regmap,
+			      chip->base + SMB5_CHGR_ADC_RECHARGE_THRESHOLD_MSB_REG,
+			      rchg, sizeof(rchg));
+	if (rc < 0)
+		return rc;
+
+	guard(mutex)(&chip->threshold_lock);
+
+	chip->charge_start_pct =
+		smb_uv_to_capacity(chip, div_u64((u64)(rchg[0] << 8 | rchg[1]) *
+						 SMB5_VBAT_LSB_NV, 1000));
+	chip->thresholds_ready = true;
+
+	return 0;
+}
+
 static int smb_get_property(struct power_supply *psy,
 			     enum power_supply_property psp,
 			     union power_supply_propval *val)
@@ -745,6 +977,16 @@ static int smb_get_property(struct power_supply *psy,
 		return smb_apsd_get_charger_type(chip, &val->intval);
 	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
 		return smb_get_charge_behaviour(chip, &val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD: {
+		guard(mutex)(&chip->threshold_lock);
+		val->intval = chip->charge_start_pct;
+		return 0;
+	}
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD: {
+		guard(mutex)(&chip->threshold_lock);
+		val->intval = chip->charge_end_pct;
+		return 0;
+	}
 	default:
 		dev_err(chip->dev, "invalid property: %d\n", psp);
 		return -EINVAL;
@@ -765,6 +1007,9 @@ static int smb_set_property(struct power_supply *psy,
 		return smb_set_current_limit(chip, val->intval);
 	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
 		return smb_set_charge_behaviour(chip, val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
+		return smb5_set_charge_threshold(chip, psp, val->intval);
 	default:
 		dev_err(chip->dev, "No setter for property: %d\n", psp);
 		return -EINVAL;
@@ -778,6 +1023,8 @@ static int smb_property_is_writable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_STATUS:
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
 		return 1;
 	default:
 		return 0;
@@ -790,7 +1037,8 @@ static irqreturn_t smb_handle_batt_overvoltage(int irq, void *data)
 
 	if (smbx_ov_status(chip) == 1) {
 		/* The hardware stops charging automatically */
-		dev_err(chip->dev, "battery overvoltage detected\n");
+		if (READ_ONCE(chip->charge_end_pct) == 100)
+			dev_err(chip->dev, "battery overvoltage detected\n");
 		power_supply_changed(chip->chg_psy);
 	}
 
@@ -1121,6 +1369,11 @@ static int smb_probe(struct platform_device *pdev)
 
 	chip->dev = &pdev->dev;
 	chip->name = pdev->name;
+	chip->charge_end_pct = 100;
+
+	rc = devm_mutex_init(chip->dev, &chip->threshold_lock);
+	if (rc)
+		return rc;
 
 	chip->regmap = dev_get_regmap(pdev->dev.parent, NULL);
 	if (!chip->regmap)
@@ -1162,6 +1415,10 @@ static int smb_probe(struct platform_device *pdev)
 	if (!desc)
 		return -ENOMEM;
 	memcpy(desc, &smb_psy_desc, sizeof(smb_psy_desc));
+	if (chip->gen == SMB5) {
+		desc->properties = smb5_properties;
+		desc->num_properties = ARRAY_SIZE(smb5_properties);
+	}
 	desc->name =
 		devm_kasprintf(chip->dev, GFP_KERNEL, "%s-charger",
 			       match_data->name);
@@ -1188,11 +1445,9 @@ static int smb_probe(struct platform_device *pdev)
 				     "Failed to init status change work\n");
 
 	if (chip->gen == SMB5)
-		rc = (chip->batt_info->voltage_max_design_uv - 3600000) / 10000;
+		rc = smb5_init_charge_thresholds(chip);
 	else
-		rc = (chip->batt_info->voltage_max_design_uv - 3487500) / 7500 + 1;
-	rc = regmap_update_bits(chip->regmap, chip->base + FLOAT_VOLTAGE_CFG,
-				FLOAT_VOLTAGE_SETTING_MASK, rc);
+		rc = smb_set_float_voltage(chip, chip->batt_info->voltage_max_design_uv);
 	if (rc < 0)
 		return dev_err_probe(chip->dev, rc, "Couldn't set vbat max\n");
 
