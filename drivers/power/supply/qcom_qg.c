@@ -620,7 +620,31 @@ static enum power_supply_property qcom_qg_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD,
 };
+
+static int qcom_qg_charger_property(struct qcom_qg_chip *chip,
+				    enum power_supply_property psp,
+				    union power_supply_propval *val, bool set)
+{
+	struct power_supply *charger;
+	int ret;
+
+	charger = power_supply_get_by_reference(dev_fwnode(chip->dev), "power-supplies");
+	if (IS_ERR(charger))
+		return PTR_ERR(charger);
+	if (!charger)
+		return -ENODEV;
+
+	if (set)
+		ret = power_supply_set_property(charger, psp, val);
+	else
+		ret = power_supply_get_property(charger, psp, val);
+	power_supply_put(charger);
+
+	return ret;
+}
 
 static int qcom_qg_get_state(struct qcom_qg_chip *chip,
 			     enum power_supply_property psp, int *val)
@@ -667,6 +691,9 @@ static int qcom_qg_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
 	case POWER_SUPPLY_PROP_CAPACITY:
 		return qcom_qg_get_state(chip, psp, &val->intval);
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
+		return qcom_qg_charger_property(chip, psp, val, false);
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
 		break;
@@ -717,6 +744,29 @@ static int qcom_qg_get_property(struct power_supply *psy,
 	return 0;
 }
 
+static int qcom_qg_set_property(struct power_supply *psy,
+				enum power_supply_property psp,
+				const union power_supply_propval *val)
+{
+	struct qcom_qg_chip *chip = power_supply_get_drvdata(psy);
+	union power_supply_propval pval = *val;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD:
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
+		return qcom_qg_charger_property(chip, psp, &pval, true);
+	default:
+		return -EINVAL;
+	}
+}
+
+static int qcom_qg_property_is_writeable(struct power_supply *psy,
+					 enum power_supply_property psp)
+{
+	return psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_START_THRESHOLD ||
+	       psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD;
+}
+
 static void qcom_qg_external_power_changed(struct power_supply *psy)
 {
 	struct qcom_qg_chip *chip = power_supply_get_drvdata(psy);
@@ -731,6 +781,8 @@ static struct power_supply_desc batt_psy_desc = {
 	.properties = qcom_qg_props,
 	.num_properties = ARRAY_SIZE(qcom_qg_props),
 	.get_property = qcom_qg_get_property,
+	.set_property = qcom_qg_set_property,
+	.property_is_writeable = qcom_qg_property_is_writeable,
 	.external_power_changed = qcom_qg_external_power_changed,
 };
 
