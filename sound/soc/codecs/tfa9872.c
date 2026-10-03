@@ -26,9 +26,14 @@
 #define TFA987X_SYS_CTRL2_FRACTDEL_MSK	GENMASK(10, 5)
 
 #define TFA987X_REV			0x03
+#define TFA9873_SYS_CTRL4		0x04
+#define TFA9873_SYS_CTRL4_FSSYNCEN_MSK	BIT(8)
 #define TFA987X_CLK_GATING_CTRL		0x05
+#define TFA9873_KEY_HIDE		0x0f
+#define TFA9873_KEY_HIDE_UNLOCK		0x5a6b
 
 #define TFA987X_TDM_CFG0		0x20
+#define TFA9873_TDM_CFG0_NSLOTS_MSK	GENMASK(4, 1)
 #define TFA987X_TDM_CFG0_FSBCLKS_MSK	GENMASK(15, 12)
 #define TFA987X_TDM_CFG1		0x21
 #define TFA987X_TDM_CFG1_NSLOTS_MSK	GENMASK(3,  0)
@@ -84,6 +89,27 @@
 #define TFA987X_DCDC_CTRL6		0x76
 #define TFA9874_DCDC_CTRL6_DCVOF_MSK	GENMASK(8,  3)
 #define TFA9874_DCDC_CTRL6_DCVOS_MSK	GENMASK(14,  9)
+
+#define TFA9873_KEY1			0xa0
+#define TFA9873_KEY1_SEED		0xfb
+#define TFA9873_KEY1_XOR		0x5a
+#define TFA9873_KEY2			0xa1
+#define TFA9873_KEY2_UNLOCK		0x5a
+
+static const struct reg_sequence tfa9873_n1a_init[] = {
+	{ 0x02, 0x0628 }, { 0x4c, 0x00e9 }, { 0x52, 0x17d0 },
+	{ 0x56, 0x0011 }, { 0x58, 0x0200 }, { 0x59, 0x0001 },
+	{ 0x5f, 0x0180 }, { 0x61, 0x0183 }, { 0x63, 0x055a },
+	{ 0x65, 0x0542 }, { 0x6f, 0x00a3 }, { 0x70, 0xa3fb },
+	{ 0x71, 0x007e }, { 0x83, 0x009a }, { 0x84, 0x0211 },
+	{ 0x85, 0x0382 }, { 0x8c, 0x0210 }, { 0xd5, 0x0000 },
+};
+
+static const struct reg_sequence tfa9873_n1b_init[] = {
+	{ 0x02, 0x0628 }, { 0x61, 0x0183 }, { 0x63, 0x005a },
+	{ 0x6f, 0x0083 }, { 0x70, 0xa3fb }, { 0x73, 0x0187 },
+	{ 0x83, 0x009a }, { 0x85, 0x0380 }, { 0xd5, 0x004d },
+};
 
 static int tfa987x_digital_mute(struct snd_soc_dai *codec_dai, int mute, int stream)
 {
@@ -215,11 +241,50 @@ static bool tfa987x_setup_dcdc(struct device *dev, struct regmap *rmap, u16 rev)
 	return true;
 }
 
+static int tfa9873_init(struct regmap *rmap, unsigned int rev)
+{
+	unsigned int seed;
+	int ret;
+
+	ret = regmap_write(rmap, TFA9873_KEY_HIDE, TFA9873_KEY_HIDE_UNLOCK);
+	if (ret)
+		return ret;
+
+	ret = regmap_read(rmap, TFA9873_KEY1_SEED, &seed);
+	if (ret)
+		return ret;
+
+	ret = regmap_write(rmap, TFA9873_KEY1, seed ^ TFA9873_KEY1_XOR);
+	if (ret)
+		return ret;
+
+	ret = regmap_write(rmap, TFA9873_KEY2, TFA9873_KEY2_UNLOCK);
+	if (ret)
+		return ret;
+
+	switch (rev) {
+	case 0x0a73:
+		ret = regmap_multi_reg_write(rmap, tfa9873_n1a_init,
+					     ARRAY_SIZE(tfa9873_n1a_init));
+		break;
+	case 0x0b73:
+		ret = regmap_multi_reg_write(rmap, tfa9873_n1b_init,
+					     ARRAY_SIZE(tfa9873_n1b_init));
+		break;
+	}
+	if (ret)
+		return ret;
+
+	return regmap_update_bits(rmap, TFA9873_SYS_CTRL4,
+				  TFA9873_SYS_CTRL4_FSSYNCEN_MSK, 0);
+}
+
 static int tfa987x_i2c_probe(struct i2c_client *i2c)
 {
 	struct device *dev = &i2c->dev;
 	struct regmap *rmap;
 	unsigned int rev;
+	u32 spk_slot = 0;
 	int ret;
 
 	rmap = devm_regmap_init_i2c(i2c, &tfa987x_regmap_config);
@@ -236,6 +301,9 @@ static int tfa987x_i2c_probe(struct i2c_client *i2c)
 		case 0x1b72:
 		case 0x2b72:
 		case 0x3b72:
+		case 0x0a73:
+		case 0x0b73:
+		case 0x1a73:
 		case 0x0c74:
 			dev_info(dev, "Chip revision: 0x%04x\n", rev);
 			break;
@@ -244,8 +312,18 @@ static int tfa987x_i2c_probe(struct i2c_client *i2c)
 			return -ENODEV;
 	}
 
+	of_property_read_u32(dev->of_node, "nxp,tdm-speaker-slot", &spk_slot);
+	if (!FIELD_FIT(TFA987X_TDM_CFG6_SPKS_MSK, spk_slot))
+		return dev_err_probe(dev, -EINVAL, "Invalid speaker slot %u\n", spk_slot);
+
 	/* Perform soft reset */
 	regmap_write(rmap, TFA987X_SYS_CTRL0, TFA987X_SYS_CTRL0_I2CR_MSK);
+
+	if ((rev & 0xff) == 0x73) {
+		ret = tfa9873_init(rmap, rev);
+		if (ret)
+			return dev_err_probe(dev, ret, "Failed to initialize TFA9873\n");
+	}
 
 	/* Setup DC-DC Converter if we have configuration */
 	regmap_update_bits(rmap, TFA987X_SYS_CTRL0, TFA987X_SYS_CTRL0_DCDC_MSK,
@@ -257,14 +335,25 @@ static int tfa987x_i2c_probe(struct i2c_client *i2c)
 				 TFA987X_AUDIO_CTRL_DPSA_MSK, 0);
 
 	/* Setup TDM 16 bit 1 slot config */
-	regmap_update_bits(rmap, TFA987X_TDM_CFG0,
-				 TFA987X_TDM_CFG0_FSBCLKS_MSK,
-				 FIELD_PREP(TFA987X_TDM_CFG0_FSBCLKS_MSK, 0));
-	regmap_update_bits(rmap, TFA987X_TDM_CFG1,
-				 TFA987X_TDM_CFG1_NSLOTS_MSK |
-				 TFA987X_TDM_CFG1_SLOTBITS_MSK,
-				 FIELD_PREP(TFA987X_TDM_CFG1_NSLOTS_MSK, 1) |
-				 FIELD_PREP(TFA987X_TDM_CFG1_SLOTBITS_MSK, 15));
+	if ((rev & 0xff) == 0x73) {
+		regmap_update_bits(rmap, TFA987X_TDM_CFG0,
+					 TFA987X_TDM_CFG0_FSBCLKS_MSK |
+					 TFA9873_TDM_CFG0_NSLOTS_MSK,
+					 FIELD_PREP(TFA987X_TDM_CFG0_FSBCLKS_MSK, 0) |
+					 FIELD_PREP(TFA9873_TDM_CFG0_NSLOTS_MSK, 1));
+		regmap_update_bits(rmap, TFA987X_TDM_CFG1,
+					 TFA987X_TDM_CFG1_SLOTBITS_MSK,
+					 FIELD_PREP(TFA987X_TDM_CFG1_SLOTBITS_MSK, 15));
+	} else {
+		regmap_update_bits(rmap, TFA987X_TDM_CFG0,
+					 TFA987X_TDM_CFG0_FSBCLKS_MSK,
+					 FIELD_PREP(TFA987X_TDM_CFG0_FSBCLKS_MSK, 0));
+		regmap_update_bits(rmap, TFA987X_TDM_CFG1,
+					 TFA987X_TDM_CFG1_NSLOTS_MSK |
+					 TFA987X_TDM_CFG1_SLOTBITS_MSK,
+					 FIELD_PREP(TFA987X_TDM_CFG1_NSLOTS_MSK, 1) |
+					 FIELD_PREP(TFA987X_TDM_CFG1_SLOTBITS_MSK, 15));
+	}
 	regmap_update_bits(rmap, TFA987X_TDM_CFG2,
 				 TFA987X_TDM_CFG2_SWIDTH_MSK,
 				 FIELD_PREP(TFA987X_TDM_CFG2_SWIDTH_MSK, 15));
@@ -278,7 +367,7 @@ static int tfa987x_i2c_probe(struct i2c_client *i2c)
 				 TFA987X_TDM_CFG3_SPKE_MSK);
 	regmap_update_bits(rmap, TFA987X_TDM_CFG6,
 				 TFA987X_TDM_CFG6_SPKS_MSK,
-				 FIELD_PREP(TFA987X_TDM_CFG6_SPKS_MSK, 0));
+				 FIELD_PREP(TFA987X_TDM_CFG6_SPKS_MSK, spk_slot));
 
 	if ((rev & 0xff) == 0x72)
 		regmap_update_bits(rmap, TFA987X_MODE1_DET1,
@@ -299,6 +388,7 @@ static int tfa987x_i2c_probe(struct i2c_client *i2c)
 
 static const struct of_device_id tfa987x_of_match[] = {
 	{ .compatible = "nxp,tfa9872" },
+	{ .compatible = "nxp,tfa9873" },
 	{ .compatible = "nxp,tfa9874" },
 	{ }
 };
