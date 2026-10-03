@@ -225,6 +225,17 @@ enum charger_status {
 	DISABLE_CHARGE,
 };
 
+enum smb5_charger_status {
+	SMB5_INHIBIT_CHARGE = 0,
+	SMB5_TRICKLE_CHARGE,
+	SMB5_PRE_CHARGE,
+	SMB5_FULLON_CHARGE,
+	SMB5_TAPER_CHARGE,
+	SMB5_TERMINATE_CHARGE,
+	SMB5_PAUSE_CHARGE,
+	SMB5_DISABLE_CHARGE,
+};
+
 struct smb_init_register {
 	u16 addr;
 	u8 mask;
@@ -441,6 +452,25 @@ static int smb_get_prop_status(struct smb_chip *chip, int *val)
 	}
 
 	stat = stat & BATTERY_CHARGER_STATUS_MASK;
+
+	if (chip->gen == SMB5) {
+		switch (stat) {
+		case SMB5_TRICKLE_CHARGE:
+		case SMB5_PRE_CHARGE:
+		case SMB5_FULLON_CHARGE:
+		case SMB5_TAPER_CHARGE:
+			*val = POWER_SUPPLY_STATUS_CHARGING;
+			return 0;
+		case SMB5_INHIBIT_CHARGE:
+		case SMB5_TERMINATE_CHARGE:
+			*val = READ_ONCE(chip->charge_end_pct) < 100 ?
+			       POWER_SUPPLY_STATUS_NOT_CHARGING : POWER_SUPPLY_STATUS_FULL;
+			return 0;
+		default:
+			*val = POWER_SUPPLY_STATUS_NOT_CHARGING;
+			return 0;
+		}
+	}
 
 	switch (stat) {
 	case TRICKLE_CHARGE:
