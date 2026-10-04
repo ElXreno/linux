@@ -480,11 +480,17 @@ static void dpu_kms_complete_commit(struct msm_kms *kms, unsigned crtc_mask)
 {
 	struct dpu_kms *dpu_kms = to_dpu_kms(kms);
 	struct drm_crtc *crtc;
+	bool active = false;
 
 	DPU_ATRACE_BEGIN("kms_complete_commit");
 
-	for_each_crtc_mask(dpu_kms->dev, crtc, crtc_mask)
+	for_each_crtc_mask(dpu_kms->dev, crtc, crtc_mask) {
 		dpu_crtc_complete_commit(crtc);
+		active |= crtc->state->active;
+	}
+
+	if (active)
+		msm_iommu_unmap_direct_regions(to_msm_vm(kms->vm)->mmu);
 
 	DPU_ATRACE_END("kms_complete_commit");
 }

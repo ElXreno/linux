@@ -20,6 +20,8 @@ struct msm_iommu {
 	struct page *prr_page;
 
 	struct kmem_cache *pt_cache;
+
+	struct list_head direct_regions;
 };
 
 #define to_msm_iommu(x) container_of(x, struct msm_iommu, base)
@@ -710,6 +712,7 @@ static int msm_iommu_unmap(struct msm_mmu *mmu, uint64_t iova, size_t len)
 static void msm_iommu_destroy(struct msm_mmu *mmu)
 {
 	struct msm_iommu *iommu = to_msm_iommu(mmu);
+	iommu_put_resv_regions(mmu->dev, &iommu->direct_regions);
 	iommu_domain_free(iommu->domain);
 	kmem_cache_destroy(iommu->pt_cache);
 	kfree(iommu);
@@ -748,6 +751,7 @@ struct msm_mmu *msm_iommu_new(struct device *dev, unsigned long quirks)
 	msm_mmu_init(&iommu->base, dev, &funcs, MSM_MMU_IOMMU);
 
 	mutex_init(&iommu->init_lock);
+	INIT_LIST_HEAD(&iommu->direct_regions);
 
 	ret = iommu_attach_device(iommu->domain, dev);
 	if (ret) {
@@ -757,6 +761,49 @@ struct msm_mmu *msm_iommu_new(struct device *dev, unsigned long quirks)
 	}
 
 	return &iommu->base;
+}
+
+static void msm_iommu_map_direct_regions(struct msm_iommu *iommu)
+{
+	struct device *dev = iommu->base.dev;
+	struct iommu_resv_region *region, *next;
+	LIST_HEAD(regions);
+	int ret;
+
+	iommu_get_resv_regions(dev, &regions);
+
+	list_for_each_entry_safe(region, next, &regions, list) {
+		if (region->type != IOMMU_RESV_DIRECT &&
+		    region->type != IOMMU_RESV_DIRECT_RELAXABLE)
+			continue;
+
+		ret = iommu_map(iommu->domain, region->start, region->start,
+				region->length, region->prot, GFP_KERNEL);
+		if (ret) {
+			dev_warn(dev, "failed to map direct region %pa+%zx: %d\n",
+				 &region->start, region->length, ret);
+			continue;
+		}
+
+		list_move_tail(&region->list, &iommu->direct_regions);
+	}
+
+	iommu_put_resv_regions(dev, &regions);
+}
+
+void msm_iommu_unmap_direct_regions(struct msm_mmu *mmu)
+{
+	struct msm_iommu *iommu = to_msm_iommu(mmu);
+	struct iommu_resv_region *region;
+
+	if (list_empty(&iommu->direct_regions))
+		return;
+
+	list_for_each_entry(region, &iommu->direct_regions, list)
+		iommu_unmap(iommu->domain, region->start, region->length);
+
+	iommu_put_resv_regions(mmu->dev, &iommu->direct_regions);
+	INIT_LIST_HEAD(&iommu->direct_regions);
 }
 
 struct msm_mmu *msm_iommu_disp_new(struct device *dev, unsigned long quirks)
@@ -770,6 +817,7 @@ struct msm_mmu *msm_iommu_disp_new(struct device *dev, unsigned long quirks)
 
 	iommu = to_msm_iommu(mmu);
 	iommu_set_fault_handler(iommu->domain, msm_disp_fault_handler, iommu);
+	msm_iommu_map_direct_regions(iommu);
 
 	return mmu;
 }
