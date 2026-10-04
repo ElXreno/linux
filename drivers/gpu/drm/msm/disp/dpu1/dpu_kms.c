@@ -1102,6 +1102,34 @@ static void _dpu_kms_mmu_destroy(struct dpu_kms *dpu_kms)
 	dpu_kms->base.vm = NULL;
 }
 
+static void dpu_kms_stop_boot_splash(struct dpu_kms *dpu_kms)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(dpu_kms->rm.hw_intf); i++) {
+		struct dpu_hw_intf *intf = dpu_kms->rm.hw_intf[i];
+
+		if (intf && intf->ops.stop_autorefresh)
+			intf->ops.stop_autorefresh(intf);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(dpu_kms->rm.ctl_blks); i++) {
+		struct dpu_hw_ctl *ctl;
+		int j;
+
+		if (!dpu_kms->rm.ctl_blks[i])
+			continue;
+
+		ctl = to_dpu_hw_ctl(dpu_kms->rm.ctl_blks[i]);
+		ctl->ops.clear_pending_flush(ctl);
+		ctl->ops.clear_all_blendstages(ctl);
+		for (j = 0; j < ctl->mixer_count; j++)
+			ctl->ops.update_pending_flush_mixer(ctl, ctl->mixer_hw_caps[j].id);
+		ctl->ops.trigger_flush(ctl);
+		ctl->ops.clear_pending_flush(ctl);
+	}
+}
+
 static int _dpu_kms_mmu_init(struct dpu_kms *dpu_kms)
 {
 	struct drm_gpuvm *vm;
@@ -1174,16 +1202,6 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 		goto err_pm_put;
 	}
 
-	/*
-	 * Now we need to read the HW catalog and initialize resources such as
-	 * clocks, regulators, GDSC/MMAGIC, ioremap the register ranges etc
-	 */
-	rc = _dpu_kms_mmu_init(dpu_kms);
-	if (rc) {
-		DPU_ERROR("dpu_kms_mmu_init failed: %d\n", rc);
-		goto err_pm_put;
-	}
-
 	dpu_kms->mdss = qcom_ubwc_config_get_data();
 	if (IS_ERR(dpu_kms->mdss)) {
 		rc = PTR_ERR(dpu_kms->mdss);
@@ -1200,6 +1218,18 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 	rc = dpu_rm_init(dev, &dpu_kms->rm, dpu_kms->catalog, dpu_kms->mdss, dpu_kms->mmio);
 	if (rc) {
 		DPU_ERROR("rm init failed: %d\n", rc);
+		goto err_pm_put;
+	}
+
+	dpu_kms_stop_boot_splash(dpu_kms);
+
+	/*
+	 * Now we need to read the HW catalog and initialize resources such as
+	 * clocks, regulators, GDSC/MMAGIC, ioremap the register ranges etc
+	 */
+	rc = _dpu_kms_mmu_init(dpu_kms);
+	if (rc) {
+		DPU_ERROR("dpu_kms_mmu_init failed: %d\n", rc);
 		goto err_pm_put;
 	}
 
