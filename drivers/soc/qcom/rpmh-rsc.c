@@ -989,7 +989,8 @@ static void rpmh_rsc_cpu_pm_unregister(void *data)
 
 static bool rpmh_rsc_no_rpmh_read(void)
 {
-	return of_machine_is_compatible("qcom,sm8150") ||
+	return of_machine_is_compatible("qcom,sm7150") ||
+	       of_machine_is_compatible("qcom,sm8150") ||
 	       of_machine_is_compatible("qcom,sc8180x");
 }
 
