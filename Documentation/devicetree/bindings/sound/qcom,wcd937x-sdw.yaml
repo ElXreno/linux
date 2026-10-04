@@ -37,7 +37,7 @@ properties:
     minItems: 4
     maxItems: 4
     items:
-      enum: [1, 2, 3, 4]
+      enum: [1, 2, 3, 4, 5]
 
   qcom,rx-port-mapping:
     description: |
