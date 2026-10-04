@@ -5067,23 +5067,25 @@ static int hci_dev_setup_sync(struct hci_dev *hdev)
 			bt_dev_warn(hdev, "%s", hci_broken_table[i].desc);
 	}
 
+	if (ret)
+		return ret;
+
 	/* The transport driver can set the quirk to mark the
 	 * BD_ADDR invalid before creating the HCI device or in
 	 * its setup callback.
 	 */
 	invalid_bdaddr = hci_test_quirk(hdev, HCI_QUIRK_INVALID_BDADDR) ||
 			 hci_test_quirk(hdev, HCI_QUIRK_USE_BDADDR_PROPERTY);
-	if (!ret) {
-		if (hci_test_quirk(hdev, HCI_QUIRK_USE_BDADDR_PROPERTY) &&
-		    !bacmp(&hdev->public_addr, BDADDR_ANY))
-			hci_dev_get_bd_addr_from_property(hdev);
 
-		if (invalid_bdaddr && bacmp(&hdev->public_addr, BDADDR_ANY) &&
-		    hdev->set_bdaddr) {
-			ret = hdev->set_bdaddr(hdev, &hdev->public_addr);
-			if (!ret)
-				invalid_bdaddr = false;
-		}
+	if (hci_test_quirk(hdev, HCI_QUIRK_USE_BDADDR_PROPERTY) &&
+	    !bacmp(&hdev->public_addr, BDADDR_ANY))
+		hci_dev_get_bd_addr_from_property(hdev);
+
+	if (invalid_bdaddr && bacmp(&hdev->public_addr, BDADDR_ANY) &&
+	    hdev->set_bdaddr) {
+		ret = hdev->set_bdaddr(hdev, &hdev->public_addr);
+		if (!ret)
+			invalid_bdaddr = false;
 	}
 
 	/* The transport driver can set these quirks before
