@@ -291,6 +291,11 @@
 	firmware-name = "crnv21.bin", "crbtfw21.tlv";
 };
 
+&cont_splash_mem {
+	reg = <0x0 0x9c000000 0x0 0x1700000>;
+	iommu-addresses = <&mdss 0x0 0x9c000000 0x0 0x1700000>;
+};
+
 &gpu {
 	zap-shader {
 		firmware-name = "qcom/sm7150/xiaomi/courbet/a615_zap.mbn";
@@ -371,6 +376,7 @@
 };
 
 &mdss {
+	memory-region = <&cont_splash_mem>;
 	/delete-property/ resets;
 };
 
