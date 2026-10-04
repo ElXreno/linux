@@ -587,6 +587,27 @@ static void dpu_hw_intf_disable_autorefresh(struct dpu_hw_intf *intf,
 
 }
 
+static void dpu_hw_intf_stop_autorefresh(struct dpu_hw_intf *intf)
+{
+	ktime_t timeout = ktime_add_ms(ktime_get(), KICKOFF_TIMEOUT_MS);
+	u32 line, prev;
+
+	if (!dpu_hw_intf_get_autorefresh_config(intf, NULL))
+		return;
+
+	dpu_hw_intf_setup_autorefresh_config(intf, 0, false);
+
+	line = DPU_REG_READ(&intf->hw, INTF_TEAR_LINE_COUNT) & 0xffff;
+	do {
+		prev = line;
+		usleep_range(1000, 1100);
+		line = DPU_REG_READ(&intf->hw, INTF_TEAR_LINE_COUNT) & 0xffff;
+	} while (line != prev && ktime_before(ktime_get(), timeout));
+
+	DPU_DEBUG("intf%d stopped autorefresh at line %u\n",
+		  intf->idx - INTF_0, line);
+}
+
 static void dpu_hw_intf_program_intf_cmd_cfg(struct dpu_hw_intf *intf,
 					     struct dpu_hw_intf_cmd_mode_cfg *cmd_mode_cfg)
 {
@@ -658,6 +679,7 @@ struct dpu_hw_intf *dpu_hw_intf_init(struct drm_device *dev,
 			c->ops.vsync_sel = dpu_hw_intf_vsync_sel_v8;
 		else
 			c->ops.vsync_sel = dpu_hw_intf_vsync_sel;
+		c->ops.stop_autorefresh = dpu_hw_intf_stop_autorefresh;
 		c->ops.disable_autorefresh = dpu_hw_intf_disable_autorefresh;
 	}
 

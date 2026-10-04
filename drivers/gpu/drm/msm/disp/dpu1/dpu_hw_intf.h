@@ -74,6 +74,8 @@ struct dpu_hw_intf_cmd_mode_cfg {
  * @connect_external_te:        Read, modify, write to either set or clear listening to external TE
  *                              Returns 1 if TE was originally connected, 0 if not, or -ERROR
  * @vsync_sel:                  Select vsync signal for tear-effect configuration
+ * @stop_autorefresh:           Disable autorefresh left by the bootloader and wait
+ *                              until the frame in flight completes or stalls
  * @disable_autorefresh:        Disable autorefresh if enabled
  * @program_intf_cmd_cfg:       Program the DPU to interface datapath for command mode
  */
@@ -107,6 +109,8 @@ struct dpu_hw_intf_ops {
 	int (*connect_external_te)(struct dpu_hw_intf *intf, bool enable_external_te);
 
 	void (*vsync_sel)(struct dpu_hw_intf *intf, struct dpu_vsync_source_cfg *cfg);
+
+	void (*stop_autorefresh)(struct dpu_hw_intf *intf);
 
 	void (*disable_autorefresh)(struct dpu_hw_intf *intf, uint32_t encoder_id, u16 vdisplay);
 
